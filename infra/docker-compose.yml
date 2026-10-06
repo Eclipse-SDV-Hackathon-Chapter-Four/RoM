@@ -1,0 +1,26 @@
+# Made with Claude (Claude Code, Anthropic)
+# Start:  docker compose -f infra/docker-compose.yml up -d
+# Python dev container (installs requirements.txt):
+#         docker compose -f infra/docker-compose.yml --profile dev run --rm dev pytest common/
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    command: mosquitto -c /mosquitto-no-auth.conf   # anonymous access, port 1883 on all interfaces
+    ports: ["1883:1883"]
+
+  databroker:
+    image: ghcr.io/eclipse-kuksa/kuksa-databroker:${KUKSA_VERSION:-latest}
+    command: --insecure
+    ports: ["55555:55555"]
+
+  dev:
+    profiles: ["dev"]            # only started on demand
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    working_dir: /app
+    volumes: ["..:/app"]         # live code, no rebuild per edit
+    environment:
+      MQTT_HOST: mosquitto
+      KUKSA_HOST: databroker
+    depends_on: [mosquitto, databroker]
