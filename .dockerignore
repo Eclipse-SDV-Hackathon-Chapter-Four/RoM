@@ -1,6 +1,8 @@
 # Made with Claude (Claude Code, Anthropic)
 .git
-__pycache__/
-.pytest_cache/
+**/__pycache__/
+**/.pytest_cache/
+**/*.egg-info/
+**/build/
 logs/
 .venv/

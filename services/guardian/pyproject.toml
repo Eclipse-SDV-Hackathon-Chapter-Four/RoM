@@ -1,0 +1,17 @@
+# Made with Claude (Claude Code, Anthropic)
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rom-guardian"
+version = "0.1.0"
+description = "RoM Battery Thermal Guardian: thermal-runaway early-warning state machine fed over uProtocol"
+requires-python = ">=3.10"
+dependencies = ["rom-common", "rom-uprotocol"]
+
+[project.scripts]
+rom-guardian = "guardian.guardian:main"
+
+[tool.setuptools]
+packages = ["guardian"]

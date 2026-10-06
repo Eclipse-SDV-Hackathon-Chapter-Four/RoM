@@ -1,4 +1,0 @@
-# Made with Claude (Claude Code, Anthropic)
-eclipse-zenoh>=1.0
-# up-python pins protobuf==4.24.2 but works with the protobuf 7 that kuksa-client needs,
-# so it is installed without its deps:  pip install --no-deps up-python==0.2.0.dev0

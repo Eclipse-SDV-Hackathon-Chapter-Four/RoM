@@ -1,5 +1,13 @@
 # Made with Claude (Claude Code, Anthropic)
-kuksa-client
-paho-mqtt
-eclipse-zenoh
+# Dev environment: every RoM package, editable (run pip from the repo root).
+# Plus, separately:  pip install --no-deps up-python==0.2.0.dev0   (see libs/rom-uprotocol/README.md)
+-e ./libs/rom-common[kuksa,mqtt]
+-e ./libs/rom-uprotocol
+-e ./services/vss-uprotocol-client
+-e ./services/guardian
+-e ./services/simulator
+-e ./services/adapter
+-e ./services/fault-injector
+-e ./services/dfm
+-e ./services/evidence-collector
 pytest

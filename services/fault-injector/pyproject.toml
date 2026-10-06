@@ -1,0 +1,17 @@
+# Made with Claude (Claude Code, Anthropic)
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rom-fault-injector"
+version = "0.1.0"
+description = "RoM Fault Campaign Runner (placeholder)"
+requires-python = ">=3.10"
+dependencies = ["rom-common", "rom-uprotocol"]
+
+[project.scripts]
+rom-fault-injector = "fault_injector.__main__:main"
+
+[tool.setuptools]
+packages = ["fault_injector"]

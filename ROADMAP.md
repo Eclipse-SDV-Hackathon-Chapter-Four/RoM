@@ -32,6 +32,7 @@ flowchart LR
 - [x] MQTT → KUKSA adapter with contract validation and sequence-gap detection
 - [x] Eclipse ThreadX firmware on AZ3166 publishing sensor telemetry over MQTT
 - [x] Containerized dev stack, `make` shortcuts, unit tests per component
+- [x] uProtocol extracted into a reusable library (`libs/rom-uprotocol`); every component is its own pip package, services have their own image (ready for Ankaios)
 
 ## Next
 
