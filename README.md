@@ -1,13 +1,32 @@
 <!-- Made with Claude (Claude Code, Anthropic) -->
 # RoM — Battery Thermal Guardian
 
-Sensor / simulator → KUKSA Databroker → VSS uProtocol Publisher → (uProtocol over Zenoh) → Guardian → display.
+Sensor / simulator → KUKSA Databroker → VSS uProtocol Client → (uProtocol over Zenoh) → Guardian → display.
 The guardian never reads the databroker directly. Everything runs in Docker; you only need `docker compose` and `make`.
+
+## Repository layout
+
+Every component is its own pip package; services that run under Ankaios have their own image
+(`services/<name>/Dockerfile` → `localhost/rom/<name>:dev`, no bind mounts, env-only config).
+
+| Path | Package | Image | What |
+|---|---|---|---|
+| `libs/rom-common` | `rom_common` | – | contracts, config, JSON logging, KUKSA / MQTT helpers |
+| `libs/rom-uprotocol` | `rom_uprotocol` | – | uProtocol library: Zenoh transport, URIs, publisher, subscriber |
+| `services/vss-uprotocol-client` | `vss_uprotocol_client` | ✅ | KUKSA Databroker → uProtocol |
+| `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (uProtocol input; display command out over MQTT) |
+| `services/simulator` | `simulator` | dev image | sine-wave temperature into KUKSA |
+| `services/adapter` | `adapter` | dev image | MQTT → KUKSA |
+| `services/fault-injector` | `fault_injector` | ✅ TODO | Fault Campaign Runner |
+| `services/dfm` | `dfm` | ✅ TODO | Diagnostic Fault Manager |
+| `services/opensovd` | – | ✅ TODO | Eclipse OpenSOVD server |
+| `services/evidence-collector` | `evidence_collector` | ✅ TODO | Evidence Collector → verdicts |
+| `MXChip/AZ3166` | – (C firmware) | – | AZ3166 board on Eclipse ThreadX: sensor telemetry over MQTT, guardian state on its OLED |
 
 ## Quick start
 
 ```bash
-make guardian                    # databroker + simulator + uProtocol publisher + guardian, shows guardian logs
+make guardian                    # databroker + simulator + vss-uprotocol-client + guardian, shows guardian logs
 SIM_PERIOD_S=30 make guardian    # faster wave (30 s instead of 120 s)
 make down                        # stop everything
 ```
@@ -20,26 +39,26 @@ make down                        # stop everything
 |---|---|
 | `make help` | list all commands |
 | `make up` | start databroker + mosquitto in the background |
-| `make guardian` | databroker + simulator + vss-publisher + guardian, follow guardian logs |
+| `make guardian` | databroker + simulator + vss-uprotocol-client + guardian, follow guardian logs |
+| `make images` | build all service images `localhost/rom/<service>:dev` |
 | `make sim` | sine-wave simulator into KUKSA (foreground) |
 | `make sim-up` | databroker + simulator in the background |
 | `make kuksa` | interactive kuksa-client shell (`getValue Vehicle.Powertrain.TractionBattery.Temperature.Max`) |
 | `make logs` | follow databroker, mosquitto and simulator logs |
-| `make test` | run all tests (`common/`, `simulator/`, `guardian/`, `adapter/`, `vss_uprotocol/`) |
+| `make test` | run all tests (`libs/`, `services/`) in the dev image |
 | `make shell` | bash inside the Python image |
 | `make down` | stop everything |
 
 ## Without Docker (local Python)
 
 ```bash
-python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-pip install --no-deps up-python==0.2.0.dev0   # see vss_uprotocol/README.md
+make venv && . .venv/bin/activate     # every package installed editable (requirements.txt)
 
-python -m guardian.guardian            # offline test scenario, no broker needed
-python -m simulator.simulator              # sine wave into KUKSA (needs the databroker: make up)
-python -m vss_uprotocol.publisher          # KUKSA -> uProtocol over Zenoh
-python -m guardian.guardian --uprotocol    # live, reads uProtocol
+rom-guardian                 # offline test scenario, no broker needed
+rom-simulator                # sine wave into KUKSA (needs the databroker: make up)
+vss-uprotocol-client         # KUKSA -> uProtocol over Zenoh
+rom-guardian --uprotocol     # live, reads uProtocol
+rom-up-monitor               # print every uProtocol message on the battery topic
 pytest -q
 ```
 
@@ -51,8 +70,8 @@ pytest -q
 | `MQTT_HOST` / `MQTT_PORT` | `localhost` / `1883` | all |
 | `SIM_HZ`, `SIM_PERIOD_S`, `SIM_MIN_C`, `SIM_MAX_C` | `2`, `120`, `30`, `69` | simulator |
 | `WARN_C`, `CRIT_C` | `38`, `45` | guardian |
-| `VSS_SOURCE_PATH` | `Vehicle.Powertrain.TractionBattery.Temperature.Max` | vss-publisher |
-| `UP_AUTHORITY`, `ZENOH_MODE`, `ZENOH_CONNECT`, `ZENOH_LISTEN` | `rom-vehicle`, `peer`, –, – | vss-publisher, guardian |
+| `VSS_SOURCE_PATH` | `Vehicle.Powertrain.TractionBattery.Temperature.Max` | vss-uprotocol-client |
+| `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_MODE`, `ZENOH_CONNECT`, `ZENOH_LISTEN` | `rom-vehicle`, `zenoh`, `peer`, –, – | vss-uprotocol-client, guardian |
 
 ## Guardian states
 
@@ -69,7 +88,9 @@ Code lives under [`MXChip/AZ3166`](MXChip/AZ3166) and is based on [eclipse-threa
 ### What's in `MXChip/AZ3166`
 
 - **`starter` app** — connects to Wi-Fi, reads the four onboard sensors (temperature/humidity, pressure, accelerometer, magnetometer) every 2 seconds, prints them over the serial console (115200 baud) and renders them in a small 6x8 font on the OLED screen.
-- **`mqtt` app** — same sensors, but it follows the RoM sensor contract (`common/contracts.py`): every 500 ms it publishes a JSON message with the temperature on `rom/sensor/battery/temp` (QoS 0), and it keeps `rom/sensor/battery/status` (`online` / `offline`, QoS 1, retained; `offline` is the MQTT Last Will) up to date. Publishing anything to the board's `ThreadXAZ3166/incoming` topic still triggers an immediate extra message. This is the one running for the hackathon demo.
+- **`mqtt` app** — same sensors, but it follows the RoM sensor contract (`libs/rom-common/rom_common/contracts.py`): every 500 ms it publishes a JSON message with the temperature on `rom/sensor/battery/temp` (QoS 0), and it keeps `rom/sensor/battery/status` (`online` / `offline`, QoS 1, retained; `offline` is the MQTT Last Will) up to date. Publishing anything to the board's `ThreadXAZ3166/incoming` topic still triggers an immediate extra message. This is the one running for the hackathon demo.
+  - **Guardian state on the OLED:** it subscribes to `rom/actuator/display/cmd` (QoS 1, retained; published by `services/guardian`) and shows state, `temp_c` and reason on the lower three lines. Invalid commands are ignored, and with no command for 5 seconds it shows `G:NO LINK`.
+  - **Reconnects by itself:** if the broker goes away the board keeps retrying (1, 2, 4, 8, then every 10 s), and on reconnect it restores the Last Will, publishes `online` again and re-subscribes, so telemetry and the display resume without a reset.
 - Two small fixes worth knowing about if you touch this code:
   - `ssd1306_conf.h`: enabled the `Font_6x8` tiny font (it ships disabled) so four sensor lines fit on the 128x64 OLED at once.
   - Standard `printf`/`snprintf` on this target are built without float support (newlib-nano). Any `%f` formatting must go through nanoprintf's own `npf_snprintf` (`#include "nanoprintf.h"`) instead — see `app/starter/main.c` and `app/mqtt/telemetry.c`.

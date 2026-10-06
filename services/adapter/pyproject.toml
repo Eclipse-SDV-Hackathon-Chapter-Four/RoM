@@ -1,0 +1,17 @@
+# Made with Claude (Claude Code, Anthropic)
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rom-adapter"
+version = "0.1.0"
+description = "RoM MQTT -> KUKSA adapter with contract validation and seq checks"
+requires-python = ">=3.10"
+dependencies = ["rom-common[kuksa,mqtt]"]
+
+[project.scripts]
+rom-adapter = "adapter.mqtt_kuksa_adapter:main"
+
+[tool.setuptools]
+packages = ["adapter"]

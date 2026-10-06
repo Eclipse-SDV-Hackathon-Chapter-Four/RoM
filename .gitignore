@@ -4,8 +4,8 @@ __pycache__/
 logs/
 .vssclient_history
 .venv/
+*.egg-info/
+build/
 
 # AZ3166 firmware: local Wi-Fi credentials, never commit
 MXChip/AZ3166/app/*/cloud_config_local.h
-# AZ3166 firmware: build output
-MXChip/AZ3166/build/

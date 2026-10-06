@@ -1,0 +1,18 @@
+# Made with Claude (Claude Code, Anthropic)
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rom-common"
+version = "0.1.0"
+description = "RoM shared contracts, config, JSON logging and KUKSA/MQTT helpers"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+kuksa = ["kuksa-client>=0.4"]
+mqtt = ["paho-mqtt>=2.0"]
+
+[tool.setuptools]
+packages = ["rom_common"]

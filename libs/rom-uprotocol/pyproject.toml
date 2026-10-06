@@ -1,0 +1,19 @@
+# Made with Claude (Claude Code, Anthropic)
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rom-uprotocol"
+version = "0.1.0"
+description = "RoM uProtocol library: Zenoh transport (current up-spec), URIs, VSS signal publisher and subscriber"
+requires-python = ">=3.10"
+# up-python==0.2.0.dev0 is also required, but it pins protobuf==4.24.2 while kuksa-client needs
+# protobuf 7, so it is installed separately:  pip install --no-deps up-python==0.2.0.dev0
+dependencies = ["rom-common", "eclipse-zenoh>=1.0", "protobuf"]
+
+[project.scripts]
+rom-up-monitor = "rom_uprotocol.subscriber:main"
+
+[tool.setuptools]
+packages = ["rom_uprotocol", "rom_uprotocol.transport"]
