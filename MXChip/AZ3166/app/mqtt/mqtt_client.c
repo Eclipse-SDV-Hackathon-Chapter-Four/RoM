@@ -44,13 +44,16 @@ static VOID client_disconnect_func(NXD_MQTT_CLIENT *client_ptr)
 static void send_message(){
     UINT status;
     
-    /* Publish a message with QoS Level 1. */
+    /* Publish the RoM sensor message: QoS 0, no retain (contract: TOPIC_SENSOR_TEMP). */
     char buffer[160] = {0};
-    get_current_telemetry_string(buffer);
-    //printf("%s", buffer);
+    size_t length = telemetry_build_sensor_msg(buffer, sizeof(buffer));
+    if (length == 0){
+        printf("Sensor message does not fit the buffer.\r\n");
+        return;
+    }
 
     status = nxd_mqtt_client_publish(&mqtt_client, MQTT_PUBLISH_TOPIC, STRLEN(MQTT_PUBLISH_TOPIC),
-                                        (CHAR *)buffer, strlen(buffer), 0, QOS1, NX_WAIT_FOREVER);
+                                        (CHAR *)buffer, length, 0, QOS0, NX_WAIT_FOREVER);
 
     if (status != NXD_MQTT_SUCCESS){
         printf("Publish failed with code: %d\r\n", status);
@@ -118,6 +121,16 @@ static void mqtt_thread_work(NX_IP *ip_ptr, NX_PACKET_POOL *pool_ptr){
     server_ip.nxd_ip_version = 4;
     server_ip.nxd_ip_address.v4 = MQTT_LOCAL_BROKER_IP;
 
+    /* Last Will: the broker publishes "offline" (QoS 1, retained) if this client disappears without a
+     * clean disconnect, so the rest of the system can tell "sensor offline" from a stale value. */
+    status = nxd_mqtt_client_will_message_set(&mqtt_client,
+                                              (UCHAR *)MQTT_STATUS_TOPIC, STRLEN(MQTT_STATUS_TOPIC),
+                                              (UCHAR *)MQTT_STATUS_OFFLINE, STRLEN(MQTT_STATUS_OFFLINE),
+                                              1, QOS1);
+    if (status != NXD_MQTT_SUCCESS){
+        printf("MQTT will message setup failed with code: %d\r\n", status);
+    }
+
     /* Start the connection to the server. */
 
     status = nxd_mqtt_client_connect(&mqtt_client, &server_ip, NXD_MQTT_PORT,
@@ -127,6 +140,13 @@ static void mqtt_thread_work(NX_IP *ip_ptr, NX_PACKET_POOL *pool_ptr){
     }
     else{
         printf("MQTT Client connected.\r\n");
+
+        /* Replace the retained "offline" with "online" (QoS 1, retained). */
+        status = nxd_mqtt_client_publish(&mqtt_client, MQTT_STATUS_TOPIC, STRLEN(MQTT_STATUS_TOPIC),
+                                         (CHAR *)MQTT_STATUS_ONLINE, STRLEN(MQTT_STATUS_ONLINE), 1, QOS1, NX_WAIT_FOREVER);
+        if (status != NXD_MQTT_SUCCESS){
+            printf("Status publish failed with code: %d\r\n", status);
+        }
     }
 
     /* Subscribe to the topic with QoS level 0. */
@@ -154,9 +174,8 @@ static void mqtt_thread_work(NX_IP *ip_ptr, NX_PACKET_POOL *pool_ptr){
         tx_event_flags_get(&mqtt_app_flag, MQTT_ALL_EVENTS, TX_OR_CLEAR, &events, TX_WAIT_FOREVER);
         if (events & MQTT_RECEIVE_EVENT){
             receive_message();
-
         }
-        else if (events & MQTT_MESSAGE_READY){
+        if (events & MQTT_MESSAGE_READY){
             send_message();
         }
     }

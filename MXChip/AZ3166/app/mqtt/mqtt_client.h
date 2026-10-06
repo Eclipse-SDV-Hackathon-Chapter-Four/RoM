@@ -33,8 +33,9 @@ void mqtt_thread_entry(ULONG thread_input);
 /* Define the priority of the MQTT internal thread. */
 #define MQTT_THREAD_PRIORTY 2
 
-/* Define the MQTT keep alive timer for 5 minutes */
-#define MQTT_KEEP_ALIVE_TIMER 300
+/* MQTT keep alive in seconds. Short on purpose: the broker publishes the LWT ("offline") after
+ * 1.5x this value without traffic, and the guardian relies on it to tell "sensor offline" from stale. */
+#define MQTT_KEEP_ALIVE_TIMER 10
 
 #define QOS0 0
 #define QOS1 1

@@ -16,9 +16,11 @@
 #ifndef _SNTP_CLIENT_H
 #define _SNTP_CLIENT_H
 
+#include <stdint.h>
 #include <tx_api.h>
 
 ULONG sntp_time_get();
+uint64_t sntp_time_ms_get();
 UINT sntp_time(ULONG* unix_time);
 
 UINT sntp_init();

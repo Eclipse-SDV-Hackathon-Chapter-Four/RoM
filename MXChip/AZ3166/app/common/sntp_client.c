@@ -46,6 +46,7 @@ static TX_EVENT_FLAGS_GROUP sntp_flags;
 
 // Variables to keep track of time
 static ULONG sntp_last_time = 0;
+static ULONG sntp_last_ms   = 0;
 static ULONG tx_last_ticks  = 0;
 
 static VOID time_update_callback(NX_SNTP_TIME_MESSAGE* time_update_ptr, NX_SNTP_TIME* local_time)
@@ -70,6 +71,9 @@ static void set_sntp_time()
 
     // Stash the Unix and ThreadX times
     sntp_last_time = seconds - UNIX_TO_NTP_EPOCH_SECS;
+    // Despite its name, the "milliseconds" output of nx_sntp_client_get_local_time is the raw 32-bit NTP
+    // fraction (2^32 = 1 s). Convert it to ms.
+    sntp_last_ms   = (ULONG)(((uint64_t)milliseconds * 1000u) >> 32);
     tx_last_ticks  = tx_time_get();
 
     nx_sntp_client_utility_display_date_time(&sntp_client, time_buffer, sizeof(time_buffer));
@@ -131,6 +135,19 @@ ULONG sntp_time_get()
     ULONG sntp_time = sntp_last_time + tx_time_delta;
 
     return sntp_time;
+}
+
+uint64_t sntp_time_ms_get()
+{
+    uint64_t elapsed_ms = ((uint64_t)(tx_time_get() - tx_last_ticks) * 1000u) / TX_TIMER_TICKS_PER_SECOND;
+
+    // Not synced yet: report uptime in ms so callers can tell it apart from epoch time.
+    if (sntp_last_time == 0)
+    {
+        return elapsed_ms;
+    }
+
+    return (uint64_t)sntp_last_time * 1000u + sntp_last_ms + elapsed_ms;
 }
 
 UINT sntp_time(ULONG* unix_time)

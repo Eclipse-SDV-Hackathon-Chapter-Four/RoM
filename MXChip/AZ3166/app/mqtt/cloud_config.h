@@ -55,8 +55,19 @@ typedef enum
 #define MQTT_LOCAL_BROKER_IP (IP_ADDRESS(192, 168, 88, 250))
 // Unique per board: two clients with the same ID kick each other off the broker.
 #define MQTT_CLIENT_ID       MQTT_CLIENT_NAME "-mery"
+// On-demand request topic (not part of the RoM contract): any message triggers an immediate publish.
 #define MQTT_SUBSCRIBE_TOPIC MQTT_CLIENT_NAME "/incoming" 
-#define MQTT_PUBLISH_TOPIC   MQTT_CLIENT_NAME "/telemetry" 
+
+// RoM contract (common/contracts.py): sensor message QoS 0 no retain, status QoS 1 retain (LWT).
+// Keep in sync with TOPIC_SENSOR_TEMP / TOPIC_SENSOR_STATUS.
+#define MQTT_PUBLISH_TOPIC   "rom/sensor/battery/temp"
+#define MQTT_STATUS_TOPIC    "rom/sensor/battery/status"
+#define MQTT_STATUS_ONLINE   "online"
+#define MQTT_STATUS_OFFLINE  "offline"
+// device_id in every sensor message; the adapter tracks seq per device_id, so keep it unique per board.
+#define MQTT_DEVICE_ID       "az3166-01"
+// Sensor message period in milliseconds.
+#define TELEMETRY_INTERVAL_MS 500
 
 // ----------------------------------------------------------------------------
 // MQTT Support infrastructure

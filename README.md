@@ -69,7 +69,7 @@ Code lives under [`MXChip/AZ3166`](MXChip/AZ3166) and is based on [eclipse-threa
 ### What's in `MXChip/AZ3166`
 
 - **`starter` app** — connects to Wi-Fi, reads the four onboard sensors (temperature/humidity, pressure, accelerometer, magnetometer) every 2 seconds, prints them over the serial console (115200 baud) and renders them in a small 6x8 font on the OLED screen.
-- **`mqtt` app** — same sensors, but publishes readings to a local MQTT broker whenever a value changes, and **on demand**: publishing anything to the board's `incoming` topic triggers an immediate fresh reading. This is the one running for the hackathon demo.
+- **`mqtt` app** — same sensors, but it follows the RoM sensor contract (`common/contracts.py`): every 500 ms it publishes a JSON message with the temperature on `rom/sensor/battery/temp` (QoS 0), and it keeps `rom/sensor/battery/status` (`online` / `offline`, QoS 1, retained; `offline` is the MQTT Last Will) up to date. Publishing anything to the board's `ThreadXAZ3166/incoming` topic still triggers an immediate extra message. This is the one running for the hackathon demo.
 - Two small fixes worth knowing about if you touch this code:
   - `ssd1306_conf.h`: enabled the `Font_6x8` tiny font (it ships disabled) so four sensor lines fit on the 128x64 OLED at once.
   - Standard `printf`/`snprintf` on this target are built without float support (newlib-nano). Any `%f` formatting must go through nanoprintf's own `npf_snprintf` (`#include "nanoprintf.h"`) instead — see `app/starter/main.c` and `app/mqtt/telemetry.c`.
@@ -131,8 +131,9 @@ Once the `mqtt` app is flashed and connected, anyone on the same Wi-Fi can read 
 |---|---|
 | Broker host | `<broker-lan-ip>` |
 | Port | `1883` (no auth) |
-| Read topic | `ThreadXAZ3166/telemetry` |
-| Request topic | `ThreadXAZ3166/incoming` |
+| Sensor topic | `rom/sensor/battery/temp` (QoS 0) |
+| Status topic | `rom/sensor/battery/status` (QoS 1, retained: `online` / `offline`) |
+| Request topic | `ThreadXAZ3166/incoming` (optional, on demand) |
 
 **1. Install an MQTT client**
 
@@ -142,28 +143,28 @@ Once the `mqtt` app is flashed and connected, anyone on the same Wi-Fi can read 
 | Linux / WSL | `sudo apt install mosquitto-clients` |
 | Windows | `winget install EclipseMosquitto` |
 
-**2. Watch the live feed** — prints a new reading every time the board's data changes noticeably (about every 5 seconds):
+**2. Watch the live feed** — prints a new message every 500 ms:
 
 ```bash
-mosquitto_sub -h <broker-lan-ip> -t "ThreadXAZ3166/telemetry" -v
+mosquitto_sub -h <broker-lan-ip> -t "rom/sensor/battery/#" -v
 ```
 
 Example output:
 
 ```
-ThreadXAZ3166/telemetry Pressure: 974.17
-Temperature: 27.40
-Humidity: 52.07
-Acceleration: -2.68, -15.13, 1039.62
-Magnetic: 162.00, 208.50, -241.50
+rom/sensor/battery/status online
+rom/sensor/battery/temp {"device_id":"az3166-01","seq":64,"ts_ms":1791305613274,"temp_c":28.75}
+rom/sensor/battery/temp {"device_id":"az3166-01","seq":65,"ts_ms":1791305613794,"temp_c":28.75}
 ```
 
-**3. Ask for a reading on demand** — publish anything to the request topic and the board pushes a fresh reading immediately, instead of waiting for the next auto-update:
+`seq` starts at 1 after every boot; `ts_ms` is epoch milliseconds once the board has synced time over SNTP (uptime milliseconds before that, which the adapter treats as "no latency info"); `temp_c` is the board's onboard temperature sensor, standing in for the battery temperature. If the board drops off the network the broker publishes the retained `offline` status within about 15 seconds.
+
+**3. Ask for an extra message on demand** — publish anything to the request topic and the board sends one more message immediately, instead of waiting for the next 500 ms tick:
 
 ```bash
 mosquitto_pub -h <broker-lan-ip> -t "ThreadXAZ3166/incoming" -m "get"
 ```
 
-**4. Prefer a GUI?** Install [MQTT Explorer](https://mqtt-explorer.com), add a connection with the broker host above, port `1883`, no credentials, then expand the `ThreadXAZ3166` topic tree. Readings update live as a tree view — no commands needed.
+**4. Prefer a GUI?** Install [MQTT Explorer](https://mqtt-explorer.com), add a connection with the broker host above, port `1883`, no credentials, then expand the `rom/sensor/battery` topic tree. Readings update live as a tree view — no commands needed.
 
 **If nothing comes through:** confirm you're on the same Wi-Fi as the broker (both the 2.4GHz and 5GHz bands of the same AP usually reach it) and that the host IP above is still current — if the broker runs on someone's laptop, a DHCP lease change will move it.

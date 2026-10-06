@@ -32,6 +32,8 @@ typedef struct{
 } sensor_data;
 
 void telemetry_thread_entry(ULONG parameter);
-void get_current_telemetry_string(char* output);
+/* Builds the next RoM sensor message (common/contracts.py build_sensor_msg) into out.
+ * Increments seq. Returns the length, or 0 if out is too small. */
+size_t telemetry_build_sensor_msg(char* out, size_t out_size);
 
 #endif // _TELEMETRY_H
