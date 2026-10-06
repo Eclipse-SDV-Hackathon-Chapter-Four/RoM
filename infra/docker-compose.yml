@@ -1,5 +1,6 @@
 # Made with Claude (Claude Code, Anthropic)
 # Everything in one place (the Python image builds a venv and installs requirements.txt):
+# Shortcuts: `make up`, `make kuksa` (interactive shell), `make down`, `make help`. Raw commands:
 #   docker compose -f infra/docker-compose.yml up -d databroker mosquitto   # brokers
 #   docker compose -f infra/docker-compose.yml run --rm kuksa-client         # kuksa-client shell
 #   docker compose -f infra/docker-compose.yml run --rm dev bash             # shell in the venv
@@ -24,6 +25,8 @@ services:
     command: kuksa-client grpc://databroker:55555
     stdin_open: true
     tty: true
+    working_dir: /history        # kuksa-client writes .vssclient_history into the cwd
+    volumes: [kuksa-history:/history]
     depends_on: [databroker]
 
   dev:
@@ -36,3 +39,6 @@ services:
       MQTT_HOST: mosquitto
       KUKSA_HOST: databroker
     depends_on: [databroker]
+
+volumes:
+  kuksa-history:
