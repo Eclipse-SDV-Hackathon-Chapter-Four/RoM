@@ -5,10 +5,13 @@
 States: CLEAR -> MONITORING -> WARNING -> CRITICAL -> MITIGATING (-> CRITICAL if
 mitigation fails), plus SENSOR_FAULT when the temperature signal is stale, stuck or out of range.
 
+Input comes over uProtocol (Zenoh) from the VSS uProtocol Publisher, never from the KUKSA
+Databroker directly (challenge architecture rule): KUKSA -> vss_uprotocol.publisher -> guardian.
+
 Run (from the repo root):
-  python -m guardian.guardian            test scenario, offline, instant
-  python -m guardian.guardian --kuksa    live: subscribe to battery temp on KUKSA
-  make guardian                          databroker + sine-wave simulator + guardian in compose
+  python -m guardian.guardian              test scenario, offline, instant
+  python -m guardian.guardian --uprotocol  live: battery temp from up://<UP_AUTHORITY>/1001/1/8001
+  make guardian                            databroker + simulator + publisher + guardian in compose
 """
 import os
 import queue
@@ -16,8 +19,8 @@ import sys
 import threading
 import time
 
-from common import jsonlog, kuksa
-from common.contracts import CLEAR, CRITICAL, MONITORING, SENSOR_FAULT, VSS_BATTERY_TEMP, WARNING
+from common import jsonlog
+from common.contracts import CLEAR, CRITICAL, MONITORING, SENSOR_FAULT, WARNING
 
 MITIGATING = "MITIGATING"
 TICK_S = 0.5
@@ -101,39 +104,40 @@ def show(g, t, temp):
 
 
 def subscribe_temp(samples, log):
-    """Push every temperature update into `samples`, reconnecting forever (stale while down)."""
-    while True:
-        try:
-            client = kuksa.open_client()
-            log.log("kuksa_connected", path=VSS_BATTERY_TEMP)
-            for temp, _ in kuksa.subscribe_temp(client):
-                samples.put(temp)
-        except Exception as e:
-            log.log("kuksa_error", error=repr(e))
-        time.sleep(1)
+    """Push every uProtocol sample into `samples`. Zenoh reconnects on its own (stale while down)."""
+    from vss_uprotocol import topics
+    from vss_uprotocol.subscriber import UpSignalSource
+    from vss_uprotocol.zenoh_transport import ZenohTransport
+
+    transport = ZenohTransport(topics.guardian_uri())
+    status = UpSignalSource(transport, samples.put, lambda reason: log.log("rejected", reason=reason)).start()
+    log.log("subscribed", zenoh_key=status.message)
+    return transport
 
 
-def run_kuksa():
+def run_uprotocol():
     log = jsonlog.get_logger("guardian")
     samples = queue.Queue()
-    threading.Thread(target=subscribe_temp, args=(samples, log), daemon=True).start()
+    _transport = subscribe_temp(samples, log)  # keep a reference, or the Zenoh session is closed
     g, start = Guardian(), time.monotonic()
+    last = None  # last uProtocol sample: its msg_id/seq link a state change to the message that caused it
     # Tick even without samples, otherwise a dead sensor would never be detected as stale.
     while True:
         try:
-            temp = samples.get(timeout=TICK_S)
+            last = samples.get(timeout=TICK_S)
+            temp = last.value
         except queue.Empty:
             temp = None
         before = g.state
         state, reason = g.update(time.monotonic() - start, temp)
         if state != before:
-            log.log("state_change", **{"from": before}, to=state, reason=reason, temp_c=round(g.temp, 2))
-
+            log.log("state_change", **{"from": before}, to=state, reason=reason, temp_c=round(g.temp, 2),
+                    seq=last.seq if last else None, msg_id=last.msg_id if last else None)
 
 if __name__ == "__main__":
     try:
-        if "--kuksa" in sys.argv:
-            run_kuksa()
+        if "--uprotocol" in sys.argv:
+            run_uprotocol()
         else:
             g = Guardian()
             print(f"{'time':>6}  {'temp':>6}  state")

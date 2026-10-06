@@ -11,6 +11,8 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# up-python pins protobuf==4.24.2 but runs fine on the protobuf 7 kuksa-client needs -> no deps.
+RUN pip install --no-cache-dir --no-deps up-python==0.2.0.dev0
 
 COPY . .
 CMD ["pytest", "-q"]

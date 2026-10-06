@@ -1,5 +1,1 @@
 # Made with Claude (Claude Code, Anthropic)
-kuksa-client
-paho-mqtt
-eclipse-zenoh
-pytest

@@ -3,6 +3,8 @@
 import os
 from dataclasses import dataclass
 
+from .contracts import VSS_BATTERY_TEMP
+
 
 def _env(name: str, default: str) -> str:
     return os.environ.get(name, default)
@@ -22,6 +24,29 @@ def endpoints() -> Endpoints:
         mqtt_port=int(_env("MQTT_PORT", "1883")),
         kuksa_host=_env("KUKSA_HOST", "127.0.0.1"),
         kuksa_port=int(_env("KUKSA_PORT", "55555")),
+    )
+
+
+@dataclass(frozen=True)
+class UProtocol:
+    authority: str          # uProtocol authority name of this vehicle/host
+    zenoh_mode: str         # "peer" (default, finds others via multicast) or "client" (needs a router)
+    zenoh_connect: tuple    # e.g. ("tcp/zenoh:7447",) — empty = rely on multicast scouting
+    zenoh_listen: tuple
+    vss_source_path: str    # VSS path the publisher forwards to the guardian topic
+
+
+def _list(name: str) -> tuple:
+    return tuple(s.strip() for s in _env(name, "").split(",") if s.strip())
+
+
+def uprotocol() -> UProtocol:
+    return UProtocol(
+        authority=_env("UP_AUTHORITY", "rom-vehicle"),
+        zenoh_mode=_env("ZENOH_MODE", "peer"),
+        zenoh_connect=_list("ZENOH_CONNECT"),
+        zenoh_listen=_list("ZENOH_LISTEN"),
+        vss_source_path=_env("VSS_SOURCE_PATH", VSS_BATTERY_TEMP),
     )
 
 

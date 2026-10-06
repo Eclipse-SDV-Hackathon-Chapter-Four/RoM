@@ -19,7 +19,7 @@ down:   ## stop everything
 	$(DC) --profile tools down
 
 logs:   ## follow databroker + mosquitto logs
-	$(DC) --profile tools logs -f databroker mosquitto simulator
+	$(DC) --profile tools logs -f databroker mosquitto simulator vss-publisher guardian
 
 kuksa:  ## interactive kuksa-client shell in the foreground (starts databroker if needed)
 	$(DC) run --rm kuksa-client
@@ -30,14 +30,15 @@ sim:    ## sine-wave temperature simulator into KUKSA (foreground; SIM_PERIOD_S=
 sim-up: ## databroker + simulator in the background; then `make kuksa` in another terminal
 	$(DC) --profile tools up -d databroker simulator
 
-guardian: ## databroker + sine-wave simulator + guardian, follows guardian logs (Ctrl+C stops following)
-	$(DC) --profile tools up -d --build databroker simulator guardian
+guardian: ## databroker + simulator + uProtocol publisher + guardian, follows guardian logs (Ctrl+C stops following)
+	$(DC) --profile tools up -d --build databroker simulator vss-publisher guardian
 	$(DC) --profile tools logs -f guardian
 
 venv:   ## create .venv and install requirements.txt (reruns when it changes)
 $(VENV)/.installed: requirements.txt
 	python3 -m venv $(VENV)
 	$(PY) -m pip install -q -r requirements.txt
+	$(PY) -m pip install -q --no-deps up-python==0.2.0.dev0
 	touch $@
 venv: $(VENV)/.installed
 
@@ -46,10 +47,10 @@ sim-local: venv ## databroker in a container, simulator in the local .venv (fore
 	KUKSA_HOST=127.0.0.1 $(PY) -m simulator.simulator
 
 test-local: venv ## run pytest in the local .venv
-	$(PY) -m pytest -q common/ simulator/ guardian/
+	$(PY) -m pytest -q common/ simulator/ guardian/ adapter/ vss_uprotocol/
 
 shell:  ## bash in the python venv image
 	$(DC) run --rm dev bash
 
 test:   ## run pytest
-	$(DC) run --rm dev pytest -q common/ simulator/ guardian/
+	$(DC) run --rm dev pytest -q common/ simulator/ guardian/ adapter/ vss_uprotocol/
