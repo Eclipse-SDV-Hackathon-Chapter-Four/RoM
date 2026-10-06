@@ -1,7 +1,9 @@
 # Made with Claude (Claude Code, Anthropic)
-# Start:  docker compose -f infra/docker-compose.yml up -d
-# Python dev container (installs requirements.txt):
-#         docker compose -f infra/docker-compose.yml --profile dev run --rm dev pytest common/
+# Everything in one place (the Python image builds a venv and installs requirements.txt):
+#   docker compose -f infra/docker-compose.yml up -d databroker mosquitto   # brokers
+#   docker compose -f infra/docker-compose.yml run --rm kuksa-client         # kuksa-client shell
+#   docker compose -f infra/docker-compose.yml run --rm dev bash             # shell in the venv
+#   docker compose -f infra/docker-compose.yml run --rm dev pytest common/   # tests
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -13,14 +15,24 @@ services:
     command: --insecure
     ports: ["55555:55555"]
 
-  dev:
-    profiles: ["dev"]            # only started on demand
-    build:
+  kuksa-client:
+    profiles: ["tools"]          # interactive shell, only started on demand
+    build: &pyimage
       context: ..
       dockerfile: infra/Dockerfile
+    image: rom-python
+    command: kuksa-client grpc://databroker:55555
+    stdin_open: true
+    tty: true
+    depends_on: [databroker]
+
+  dev:
+    profiles: ["tools"]          # only started on demand
+    image: rom-python
+    build: *pyimage
     working_dir: /app
     volumes: ["..:/app"]         # live code, no rebuild per edit
     environment:
       MQTT_HOST: mosquitto
       KUKSA_HOST: databroker
-    depends_on: [mosquitto, databroker]
+    depends_on: [databroker]

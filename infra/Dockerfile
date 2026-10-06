@@ -1,8 +1,12 @@
 # Made with Claude (Claude Code, Anthropic)
-# Python image with all RoM requirements; used for dev/test and as a base for service images later.
+# Python image with a virtualenv (/opt/venv, always active via PATH) holding all RoM requirements.
+# Used for dev/test, the kuksa-client shell, and as a base for service images later.
 FROM python:3.12-slim
 
-ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app
+ENV VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app
+RUN python -m venv $VIRTUAL_ENV
 WORKDIR /app
 
 COPY requirements.txt .
