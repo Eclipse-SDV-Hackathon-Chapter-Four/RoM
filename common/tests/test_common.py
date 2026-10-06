@@ -44,3 +44,23 @@ def test_jsonlog_line_has_required_fields():
     rec = json.loads(buf.getvalue())
     assert rec["component"] == "guardian" and rec["event"] == "state_change"
     assert rec["run_id"] == "r1" and isinstance(rec["ts_ms"], int)
+
+
+def test_mqtt_client_subscribe_dispatch_and_publish():
+    pytest.importorskip("paho.mqtt.client")
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from common.mqtt import MqttClient
+
+    c = MqttClient("t")
+    c._client = MagicMock()
+    c._client.is_connected.return_value = True
+    got = []
+    c.subscribe("rom/sensor/#", lambda t, p: got.append((t, p)), qos=1)
+    c._client.subscribe.assert_called_with("rom/sensor/#", 1)
+    c._dispatch(None, None, SimpleNamespace(topic="rom/sensor/battery/temp", payload=b"x"))
+    c._dispatch(None, None, SimpleNamespace(topic="rom/actuator/display/cmd", payload=b"y"))
+    assert got == [("rom/sensor/battery/temp", b"x")]
+    c.publish("a/b", "hi", qos=1, retain=True)
+    c._client.publish.assert_called_with("a/b", "hi", qos=1, retain=True)

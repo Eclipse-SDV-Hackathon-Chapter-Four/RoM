@@ -14,7 +14,7 @@ from common import mqtt, kuksa      # need paho-mqtt / kuksa-client installed
 | `config` | `endpoints()` (MQTT_HOST/PORT, KUKSA_HOST/PORT) and `thresholds()` (WARN_C, CRIT_C, HYST_C, STALE_MS, STUCK_S, plausible range) from env |
 | `jsonlog` | `get_logger("guardian", run_id=...).log("state_change", ...)` → JSON line on stdout |
 | `clock` | `now_ms()` (epoch ms), `monotonic_ms()` (durations) |
-| `mqtt` | paho client factory (LWT, auto-reconnect, re-subscribe on reconnect) |
+| `mqtt` | `MqttClient(client_id, will_...)` with `.connect()`, `.publish(topic, payload, qos, retain)`, `.subscribe(topic, handler(topic, payload))`, `.close()`; auto-reconnect and re-subscribe; LWT support |
 | `kuksa` | persistent `VSSClient`, `set_temp`, `subscribe_temp` |
 
 If the contract changes, change `contracts/README.md` **and** `common/contracts.py` in the same PR.

@@ -43,3 +43,50 @@ def connect(client, subscriptions: Optional[dict] = None,
     client.connect_async(ep.mqtt_host, ep.mqtt_port, keepalive=30)
     client.loop_start()
     return client
+
+
+class MqttClient:
+    """Convenience wrapper: connect, publish(), subscribe(topic, handler), close().
+
+    Subscriptions are remembered and re-issued after every reconnect. Handlers are
+    called as handler(topic, payload_bytes) on the paho network thread, and may use
+    MQTT wildcards (+, #).
+    """
+
+    def __init__(self, client_id: str, will_topic: Optional[str] = None,
+                 will_payload: Optional[str] = None, will_qos: int = 1, will_retain: bool = True):
+        self._client = make_client(client_id, will_topic, will_payload, will_qos, will_retain)
+        self._handlers = {}  # topic filter -> (qos, handler)
+        self._on_connected = None
+
+    def connect(self, on_connected: Optional[Callable] = None) -> "MqttClient":
+        self._on_connected = on_connected
+        self._client.on_message = self._dispatch
+        connect(self._client, on_connected=self._resubscribe)
+        return self
+
+    def publish(self, topic: str, payload, qos: int = 0, retain: bool = False) -> None:
+        """Queue a message; paho delivers it once connected (QoS>0 survives reconnects)."""
+        self._client.publish(topic, payload, qos=qos, retain=retain)
+
+    def subscribe(self, topic: str, handler: Callable[[str, bytes], None], qos: int = 0) -> None:
+        self._handlers[topic] = (qos, handler)
+        if self._client.is_connected():
+            self._client.subscribe(topic, qos)
+
+    def _resubscribe(self, client) -> None:
+        for topic, (qos, _) in self._handlers.items():
+            client.subscribe(topic, qos)
+        if self._on_connected:
+            self._on_connected(self)
+
+    def _dispatch(self, client, userdata, msg) -> None:
+        from paho.mqtt.client import topic_matches_sub
+
+        for topic, (_, handler) in list(self._handlers.items()):
+            if topic_matches_sub(topic, msg.topic):
+                handler(msg.topic, msg.payload)
+
+    def close(self) -> None:
+        self._client.loop_stop()
+        self._client.disconnect()
