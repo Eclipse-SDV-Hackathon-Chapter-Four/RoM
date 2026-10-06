@@ -1,3 +1,4 @@
+<!-- Made with Claude (Claude Code, Anthropic) -->
 # RoM — MVP plan (Doctor Whodunit)
 
 **Goal for the next ~4–5 hours:** one complete flow from sensor to display, running locally (no containers for our own services yet).
