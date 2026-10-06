@@ -34,7 +34,7 @@ services:
     image: rom-python
     build: *pyimage
     working_dir: /app
-    volumes: ["..:/app"]
+    volumes: ["..:/app:z"]
     command: python -m simulator.simulator
     restart: on-failure          # databroker may not accept connections yet on first start
     environment:
@@ -48,7 +48,7 @@ services:
     image: rom-python
     build: *pyimage
     working_dir: /app
-    volumes: ["..:/app"]         # live code, no rebuild per edit
+    volumes: ["..:/app:z"]         # live code, no rebuild per edit
     environment:
       MQTT_HOST: mosquitto
       KUKSA_HOST: databroker
