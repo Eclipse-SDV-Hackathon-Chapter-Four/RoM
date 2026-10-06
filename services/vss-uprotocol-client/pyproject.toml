@@ -1,0 +1,17 @@
+# Made with Claude (Claude Code, Anthropic)
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rom-vss-uprotocol-client"
+version = "0.1.0"
+description = "RoM VSS uProtocol Client: KUKSA Databroker -> uProtocol publisher"
+requires-python = ">=3.10"
+dependencies = ["rom-common[kuksa]", "rom-uprotocol"]
+
+[project.scripts]
+vss-uprotocol-client = "vss_uprotocol_client.__main__:main"
+
+[tool.setuptools]
+packages = ["vss_uprotocol_client"]

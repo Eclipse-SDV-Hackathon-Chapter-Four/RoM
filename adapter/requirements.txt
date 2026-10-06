@@ -1,3 +1,0 @@
-# Made with Claude (Claude Code, Anthropic)
-paho-mqtt>=2.0
-kuksa-client>=0.4
