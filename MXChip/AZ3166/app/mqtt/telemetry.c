@@ -12,6 +12,7 @@
  */
 
 #include "cloud_config.h"
+#include "display_cmd.h"
 #include "nanoprintf.h"
 #include "screen.h"
 #include "sensor.h"
@@ -78,8 +79,8 @@ void telemetry_thread_entry(ULONG parameter)
 {
     //UINT status;
     sensor_data new_sensor_data;
-    char l0[22], l1[22], l2[22], l3[22];
-    const char* lines[4] = { l0, l1, l2, l3 };
+    char l0[22], l1[22], l2[22], l3[22], l4[22], l5[22], l6[22];
+    const char* lines[7] = { l0, l1, l2, l3, l4, l5, l6 };
 
     printf("Starting telemetry thread\r\n\r\n");
 
@@ -105,7 +106,31 @@ void telemetry_thread_entry(ULONG parameter)
         npf_snprintf(l1, sizeof(l1), "P:%.0fhPa", (double)new_sensor_data.pressure_hPa);
         npf_snprintf(l2, sizeof(l2), "A:%.0f,%.0f,%.0f", (double)new_sensor_data.acceleration_mg[0], (double)new_sensor_data.acceleration_mg[1], (double)new_sensor_data.acceleration_mg[2]);
         npf_snprintf(l3, sizeof(l3), "M:%.0f,%.0f,%.0f", (double)new_sensor_data.magnetic_mG[0], (double)new_sensor_data.magnetic_mG[1], (double)new_sensor_data.magnetic_mG[2]);
-        screen_print_small(lines, 4);
+
+        // Lines 5-7: guardian state from rom/actuator/display/cmd (state, temp_c, reason).
+        display_cmd_t guardian;
+        bool guardian_stale = false;
+        if (!display_cmd_load(&guardian, &guardian_stale)){
+            npf_snprintf(l4, sizeof(l4), "GUARDIAN: waiting");
+            l5[0] = '\0';
+            l6[0] = '\0';
+        }
+        else if (guardian_stale){
+            npf_snprintf(l4, sizeof(l4), "G:NO LINK");
+            npf_snprintf(l5, sizeof(l5), "last:%s", guardian.state);
+            l6[0] = '\0';
+        }
+        else{
+            npf_snprintf(l4, sizeof(l4), "G:%s", guardian.state);
+            if (guardian.has_temp){
+                npf_snprintf(l5, sizeof(l5), "T:%.2fC", (double)guardian.temp_c);
+            }
+            else{
+                npf_snprintf(l5, sizeof(l5), "T:--");
+            }
+            npf_snprintf(l6, sizeof(l6), "%s", guardian.reason);
+        }
+        screen_print_small(lines, 7);
 
         // The RoM contract is a fixed-period stream: publish every cycle, changed or not
         // (the guardian flags a signal as stale after 2 s without messages).

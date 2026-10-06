@@ -11,6 +11,7 @@
  *     Frédéric Desbiens - Initial version.
  */
 #include "cloud_config.h"
+#include "display_cmd.h"
 #include "mqtt_client.h"
 #include "nx_api.h"
 #include "telemetry.h"
@@ -63,6 +64,33 @@ static void send_message(){
     }
 }
 
+/* Guardian state for the OLED. Logged only when it changes: the guardian re-sends every second. */
+static void handle_display_cmd(const UCHAR *message, UINT length){
+    static char last_state[DISPLAY_STATE_MAX];
+    static char last_reason[DISPLAY_REASON_MAX];
+    display_cmd_t cmd;
+
+    if (!display_cmd_parse((const char *)message, length, &cmd)){
+        printf("Ignored invalid display command (%u bytes).\r\n", (unsigned)length);
+        return;
+    }
+
+    display_cmd_store(&cmd);
+
+    if (strcmp(last_state, cmd.state) != 0 || strcmp(last_reason, cmd.reason) != 0){
+        strcpy(last_state, cmd.state);
+        strcpy(last_reason, cmd.reason);
+        int centi = (int)(cmd.temp_c * 100.0f + (cmd.temp_c < 0 ? -0.5f : 0.5f));
+        if (cmd.has_temp){
+            printf("Display command: state=%s temp=%d.%02d reason=%s seq=%u\r\n", cmd.state,
+                   centi / 100, (centi < 0 ? -centi : centi) % 100, cmd.reason, (unsigned)cmd.seq);
+        }
+        else{
+            printf("Display command: state=%s temp=- reason=%s seq=%u\r\n", cmd.state, cmd.reason, (unsigned)cmd.seq);
+        }
+    }
+}
+
 static void receive_message(){
     UINT status;
     UINT topic_length, message_length;
@@ -74,6 +102,12 @@ static void receive_message(){
     if (status == NXD_MQTT_SUCCESS){
         topic_buffer[topic_length] = 0;
         message_buffer[message_length] = 0;
+
+        if (topic_length == STRLEN(MQTT_DISPLAY_TOPIC) && memcmp(topic_buffer, MQTT_DISPLAY_TOPIC, topic_length) == 0){
+            handle_display_cmd(message_buffer, message_length);
+            return;
+        }
+
         message_sent = message_buffer[0];
         status = tx_queue_send(&mqtt_queue, &message_sent, TX_WAIT_FOREVER);
         printf("Topic: %s, Message: %s\r\n", topic_buffer, message_buffer);
@@ -156,6 +190,15 @@ static void mqtt_thread_work(NX_IP *ip_ptr, NX_PACKET_POOL *pool_ptr){
     }
     else{
         printf("Subscribed to topic %s.\r\n", MQTT_SUBSCRIBE_TOPIC);
+    }
+
+    /* Guardian state for the OLED: QoS 1, the broker re-delivers the retained last state on subscribe. */
+    status = nxd_mqtt_client_subscribe(&mqtt_client, MQTT_DISPLAY_TOPIC, STRLEN(MQTT_DISPLAY_TOPIC), QOS1);
+    if (status != NXD_MQTT_SUCCESS){
+                printf("MQTT subscribe failed with code: %d\r\n", status);
+    }
+    else{
+        printf("Subscribed to topic %s.\r\n", MQTT_DISPLAY_TOPIC);
     }
 
     /* Set the receive notify function. */

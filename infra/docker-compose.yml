@@ -66,7 +66,8 @@ services:
     restart: on-failure
     environment:
       ZENOH_CONNECT: tcp/vss-publisher:7447
-    depends_on: [vss-publisher]
+      MQTT_HOST: mosquitto             # display command (rom/actuator/display/cmd) goes out over MQTT
+    depends_on: [vss-publisher, mosquitto]
 
   dev:
     profiles: ["tools"]          # only started on demand

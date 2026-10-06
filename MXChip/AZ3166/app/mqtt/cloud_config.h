@@ -62,6 +62,8 @@ typedef enum
 // Keep in sync with TOPIC_SENSOR_TEMP / TOPIC_SENSOR_STATUS.
 #define MQTT_PUBLISH_TOPIC   "rom/sensor/battery/temp"
 #define MQTT_STATUS_TOPIC    "rom/sensor/battery/status"
+// Guardian state for the OLED (TOPIC_DISPLAY_CMD, QoS 1, retained). See display_cmd.h for the payload.
+#define MQTT_DISPLAY_TOPIC   "rom/actuator/display/cmd"
 #define MQTT_STATUS_ONLINE   "online"
 #define MQTT_STATUS_OFFLINE  "offline"
 // device_id in every sensor message; the adapter tracks seq per device_id, so keep it unique per board.
