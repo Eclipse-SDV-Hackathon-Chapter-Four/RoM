@@ -76,9 +76,10 @@ typedef enum
 // ----------------------------------------------------------------------------
 extern TX_QUEUE mqtt_queue;
 extern TX_EVENT_FLAGS_GROUP mqtt_app_flag;
-#define MQTT_RECEIVE_EVENT 1
-#define MQTT_MESSAGE_READY 2
-#define MQTT_ALL_EVENTS    3
+#define MQTT_RECEIVE_EVENT    1
+#define MQTT_MESSAGE_READY    2
+#define MQTT_DISCONNECT_EVENT 4  // set when the broker connection is lost: the MQTT thread reconnects
+#define MQTT_ALL_EVENTS       7
 
 
 #endif // _CLOUD_CONFIG_H

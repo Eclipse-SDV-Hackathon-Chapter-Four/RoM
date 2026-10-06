@@ -39,10 +39,12 @@ static NXD_MQTT_CLIENT mqtt_client;
 static VOID client_disconnect_func(NXD_MQTT_CLIENT *client_ptr)
 {
     NX_PARAMETER_NOT_USED(client_ptr);
-    printf("client disconnected from broker.\r\n");
+    /* Called from inside the MQTT client with its mutex held: do not call the client here, just wake the
+     * MQTT thread, which reconnects. */
+    tx_event_flags_set(&mqtt_app_flag, MQTT_DISCONNECT_EVENT, TX_OR);
 }
 
-static void send_message(){
+static UINT send_message(){
     UINT status;
     
     /* Publish the RoM sensor message: QoS 0, no retain (contract: TOPIC_SENSOR_TEMP). */
@@ -50,7 +52,7 @@ static void send_message(){
     size_t length = telemetry_build_sensor_msg(buffer, sizeof(buffer));
     if (length == 0){
         printf("Sensor message does not fit the buffer.\r\n");
-        return;
+        return NXD_MQTT_SUCCESS;
     }
 
     status = nxd_mqtt_client_publish(&mqtt_client, MQTT_PUBLISH_TOPIC, STRLEN(MQTT_PUBLISH_TOPIC),
@@ -62,6 +64,8 @@ static void send_message(){
     else{
         printf("Published message.\r\n");
     }
+
+    return status;
 }
 
 /* Guardian state for the OLED. Logged only when it changes: the guardian re-sends every second. */
@@ -145,11 +149,79 @@ static VOID client_notify_func(NXD_MQTT_CLIENT *client_ptr, UINT number_of_messa
     return;
 }
 
+/* Reconnect timing: retry after 1 s, doubling up to 10 s, until the broker is back. */
+#define MQTT_CONNECT_TIMEOUT       (10 * TX_TIMER_TICKS_PER_SECOND)
+#define MQTT_RECONNECT_DELAY_MIN_S 1
+#define MQTT_RECONNECT_DELAY_MAX_S 10
+
 static ULONG error_count;
+
+/* Opens one MQTT session: Last Will, connect, "online" status, subscriptions.
+ * Returns NXD_MQTT_SUCCESS only if everything is in place; on failure no session is left open. */
+static UINT mqtt_open_session(NXD_ADDRESS *server_ip){
+    UINT status;
+
+    /* Last Will: the broker publishes "offline" (QoS 1, retained) if this client disappears without a
+     * clean disconnect, so the rest of the system can tell "sensor offline" from a stale value.
+     * The client forgets the will when a connection ends, so it is set again before every connect. */
+    status = nxd_mqtt_client_will_message_set(&mqtt_client,
+                                              (UCHAR *)MQTT_STATUS_TOPIC, STRLEN(MQTT_STATUS_TOPIC),
+                                              (UCHAR *)MQTT_STATUS_OFFLINE, STRLEN(MQTT_STATUS_OFFLINE),
+                                              1, QOS1);
+    if (status != NXD_MQTT_SUCCESS){
+        printf("MQTT will message setup failed with code: %d\r\n", status);
+    }
+
+    /* clean_session = 1: no persistent session. With 0 the broker queues QoS 1 messages (display commands)
+     * while the board is away and replays them on every connect, so one oversized message would crash the
+     * connection again after each reboot. Retained messages are still delivered on subscribe. */
+    status = nxd_mqtt_client_connect(&mqtt_client, server_ip, NXD_MQTT_PORT,
+                                     MQTT_KEEP_ALIVE_TIMER, 1, MQTT_CONNECT_TIMEOUT);
+    if (status != NXD_MQTT_SUCCESS){
+        printf("MQTT connect failed with code: %d\r\n", status);
+        return status;
+    }
+    printf("MQTT Client connected.\r\n");
+
+    /* Replace the retained "offline" with "online" (QoS 1, retained). */
+    status = nxd_mqtt_client_publish(&mqtt_client, MQTT_STATUS_TOPIC, STRLEN(MQTT_STATUS_TOPIC),
+                                     (CHAR *)MQTT_STATUS_ONLINE, STRLEN(MQTT_STATUS_ONLINE), 1, QOS1, NX_WAIT_FOREVER);
+    if (status != NXD_MQTT_SUCCESS){
+        printf("Status publish failed with code: %d\r\n", status);
+    }
+
+    /* On-demand request topic. */
+    status = nxd_mqtt_client_subscribe(&mqtt_client, MQTT_SUBSCRIBE_TOPIC, STRLEN(MQTT_SUBSCRIBE_TOPIC), QOS0);
+    if (status != NXD_MQTT_SUCCESS){
+        printf("MQTT subscribe failed with code: %d\r\n", status);
+        nxd_mqtt_client_disconnect(&mqtt_client);
+        return status;
+    }
+    printf("Subscribed to topic %s.\r\n", MQTT_SUBSCRIBE_TOPIC);
+
+    /* Guardian state for the OLED: QoS 1, the broker re-delivers the retained last state on subscribe. */
+    status = nxd_mqtt_client_subscribe(&mqtt_client, MQTT_DISPLAY_TOPIC, STRLEN(MQTT_DISPLAY_TOPIC), QOS1);
+    if (status != NXD_MQTT_SUCCESS){
+        printf("MQTT subscribe failed with code: %d\r\n", status);
+        nxd_mqtt_client_disconnect(&mqtt_client);
+        return status;
+    }
+    printf("Subscribed to topic %s.\r\n", MQTT_DISPLAY_TOPIC);
+
+    return NXD_MQTT_SUCCESS;
+}
+
 static void mqtt_thread_work(NX_IP *ip_ptr, NX_PACKET_POOL *pool_ptr){
     UINT status;
     NXD_ADDRESS server_ip;
     ULONG events;
+    UINT connected = 0;
+    ULONG retry_delay_s = MQTT_RECONNECT_DELAY_MIN_S;
+
+    /* Create an event flag for this demo. Before the client: its disconnect notify signals it. */
+    status = tx_event_flags_create(&mqtt_app_flag, "MQTT event");
+    if (status)
+        error_count++;
 
     printf("Creating MQTT client\r\n");
     /* Create MQTT client instance. */
@@ -167,63 +239,6 @@ static void mqtt_thread_work(NX_IP *ip_ptr, NX_PACKET_POOL *pool_ptr){
     /* Register the disconnect notification function. */
     nxd_mqtt_client_disconnect_notify_set(&mqtt_client, client_disconnect_func);
 
-    /* Create an event flag for this demo. */
-    status = tx_event_flags_create(&mqtt_app_flag, "MQTT event");
-    if (status)
-        error_count++;
-
-    server_ip.nxd_ip_version = 4;
-    server_ip.nxd_ip_address.v4 = MQTT_LOCAL_BROKER_IP;
-
-    /* Last Will: the broker publishes "offline" (QoS 1, retained) if this client disappears without a
-     * clean disconnect, so the rest of the system can tell "sensor offline" from a stale value. */
-    status = nxd_mqtt_client_will_message_set(&mqtt_client,
-                                              (UCHAR *)MQTT_STATUS_TOPIC, STRLEN(MQTT_STATUS_TOPIC),
-                                              (UCHAR *)MQTT_STATUS_OFFLINE, STRLEN(MQTT_STATUS_OFFLINE),
-                                              1, QOS1);
-    if (status != NXD_MQTT_SUCCESS){
-        printf("MQTT will message setup failed with code: %d\r\n", status);
-    }
-
-    /* Start the connection to the server. */
-
-    /* clean_session = 1: no persistent session. With 0 the broker queues QoS 1 messages (display commands)
-     * while the board is away and replays them on every connect, so one oversized message would crash the
-     * connection again after each reboot. Retained messages are still delivered on subscribe. */
-    status = nxd_mqtt_client_connect(&mqtt_client, &server_ip, NXD_MQTT_PORT,
-                                     MQTT_KEEP_ALIVE_TIMER, 1, NX_WAIT_FOREVER);
-    if (status != NXD_MQTT_SUCCESS){
-                printf("MQTT connect failed with code: %d\r\n", status);
-    }
-    else{
-        printf("MQTT Client connected.\r\n");
-
-        /* Replace the retained "offline" with "online" (QoS 1, retained). */
-        status = nxd_mqtt_client_publish(&mqtt_client, MQTT_STATUS_TOPIC, STRLEN(MQTT_STATUS_TOPIC),
-                                         (CHAR *)MQTT_STATUS_ONLINE, STRLEN(MQTT_STATUS_ONLINE), 1, QOS1, NX_WAIT_FOREVER);
-        if (status != NXD_MQTT_SUCCESS){
-            printf("Status publish failed with code: %d\r\n", status);
-        }
-    }
-
-    /* Subscribe to the topic with QoS level 0. */
-    status = nxd_mqtt_client_subscribe(&mqtt_client, MQTT_SUBSCRIBE_TOPIC, STRLEN(MQTT_SUBSCRIBE_TOPIC), QOS0);
-    if (status != NXD_MQTT_SUCCESS){
-                printf("MQTT subscribe failed with code: %d\r\n", status);
-    }
-    else{
-        printf("Subscribed to topic %s.\r\n", MQTT_SUBSCRIBE_TOPIC);
-    }
-
-    /* Guardian state for the OLED: QoS 1, the broker re-delivers the retained last state on subscribe. */
-    status = nxd_mqtt_client_subscribe(&mqtt_client, MQTT_DISPLAY_TOPIC, STRLEN(MQTT_DISPLAY_TOPIC), QOS1);
-    if (status != NXD_MQTT_SUCCESS){
-                printf("MQTT subscribe failed with code: %d\r\n", status);
-    }
-    else{
-        printf("Subscribed to topic %s.\r\n", MQTT_DISPLAY_TOPIC);
-    }
-
     /* Set the receive notify function. */
     status = nxd_mqtt_client_receive_notify_set(&mqtt_client, client_notify_func);
     if (status != NXD_MQTT_SUCCESS){
@@ -233,25 +248,43 @@ static void mqtt_thread_work(NX_IP *ip_ptr, NX_PACKET_POOL *pool_ptr){
         printf("MQTT Receive notify function set.\r\n");
     }
 
-    /* Now wait for the broker to publish the message. */
-    printf("Waiting for messages\r\n");
+    server_ip.nxd_ip_version = 4;
+    server_ip.nxd_ip_address.v4 = MQTT_LOCAL_BROKER_IP;
 
     while (1){
+        if (!connected){
+            if (mqtt_open_session(&server_ip) != NXD_MQTT_SUCCESS){
+                printf("MQTT retry in %u s.\r\n", (unsigned)retry_delay_s);
+                tx_thread_sleep(retry_delay_s * TX_TIMER_TICKS_PER_SECOND);
+                retry_delay_s = (retry_delay_s * 2 > MQTT_RECONNECT_DELAY_MAX_S) ? MQTT_RECONNECT_DELAY_MAX_S : retry_delay_s * 2;
+                continue;
+            }
+
+            connected = 1;
+            retry_delay_s = MQTT_RECONNECT_DELAY_MIN_S;
+            /* A disconnect event left over from the session that just ended must not end this one. */
+            tx_event_flags_set(&mqtt_app_flag, ~MQTT_DISCONNECT_EVENT, TX_AND);
+            printf("Waiting for messages\r\n");
+        }
+
         tx_event_flags_get(&mqtt_app_flag, MQTT_ALL_EVENTS, TX_OR_CLEAR, &events, TX_WAIT_FOREVER);
+
+        if (events & MQTT_DISCONNECT_EVENT){
+            printf("Lost the broker connection, reconnecting.\r\n");
+            connected = 0;
+            continue;
+        }
         if (events & MQTT_RECEIVE_EVENT){
             receive_message();
         }
         if (events & MQTT_MESSAGE_READY){
-            send_message();
+            if (send_message() == NXD_MQTT_NOT_CONNECTED){
+                /* Safety net in case the disconnect notification was missed. The client is already idle. */
+                printf("Publish found no connection, reconnecting.\r\n");
+                connected = 0;
+            }
         }
     }
-
-    /* Cleanup. Release resources. */
-    nxd_mqtt_client_unsubscribe(&mqtt_client, MQTT_SUBSCRIBE_TOPIC, STRLEN(MQTT_SUBSCRIBE_TOPIC));
-    nxd_mqtt_client_disconnect(&mqtt_client);
-    nxd_mqtt_client_delete(&mqtt_client);
-
-    return;
 }
 
 void mqtt_thread_entry(ULONG parameter){
