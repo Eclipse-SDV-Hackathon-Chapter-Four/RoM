@@ -96,20 +96,40 @@ static void receive_message(){
     UINT topic_length, message_length;
     ULONG message_sent = 0;
 
-    status = nxd_mqtt_client_message_get(&mqtt_client, topic_buffer, sizeof(topic_buffer), &topic_length,
-                                        message_buffer, sizeof(message_buffer), &message_length);
-    printf("Received message and status: %d \r\n", status);
-    if (status == NXD_MQTT_SUCCESS){
+    /* One wake-up can stand for several queued messages: drain them all. */
+    while (1){
+        status = nxd_mqtt_client_message_get(&mqtt_client, topic_buffer, sizeof(topic_buffer) - 1, &topic_length,
+                                            message_buffer, sizeof(message_buffer) - 1, &message_length);
+
+        if (status == NXD_MQTT_INSUFFICIENT_BUFFER_SPACE){
+            /* An oversized message stays at the head of the receive queue and would block every later one
+             * forever, and message_get cannot discard without a buffer that fits it. Read it into a big buffer
+             * just to throw it away. Sized for what the RX packet pool (12 packets of ~1.4 KB) can assemble. */
+            static UCHAR drain_buffer[16384];
+            status = nxd_mqtt_client_message_get(&mqtt_client, topic_buffer, sizeof(topic_buffer) - 1, &topic_length,
+                                                drain_buffer, sizeof(drain_buffer), &message_length);
+            printf("Dropped an oversized MQTT message (status %u).\r\n", (unsigned)status);
+            if (status != NXD_MQTT_SUCCESS){
+                return; /* still stuck: give up until the next event instead of spinning */
+            }
+            continue;
+        }
+        if (status != NXD_MQTT_SUCCESS){
+            return; /* NXD_MQTT_NO_MESSAGE: queue is empty */
+        }
+
         topic_buffer[topic_length] = 0;
         message_buffer[message_length] = 0;
 
         if (topic_length == STRLEN(MQTT_DISPLAY_TOPIC) && memcmp(topic_buffer, MQTT_DISPLAY_TOPIC, topic_length) == 0){
             handle_display_cmd(message_buffer, message_length);
-            return;
+            continue;
         }
 
+        /* On-demand request (not part of the RoM contract). Nothing consumes mqtt_queue, so never wait on it:
+         * a full queue must not stop this thread. */
         message_sent = message_buffer[0];
-        status = tx_queue_send(&mqtt_queue, &message_sent, TX_WAIT_FOREVER);
+        tx_queue_send(&mqtt_queue, &message_sent, TX_NO_WAIT);
         printf("Topic: %s, Message: %s\r\n", topic_buffer, message_buffer);
 
         // Any command on the incoming topic triggers an immediate telemetry publish.
@@ -167,8 +187,11 @@ static void mqtt_thread_work(NX_IP *ip_ptr, NX_PACKET_POOL *pool_ptr){
 
     /* Start the connection to the server. */
 
+    /* clean_session = 1: no persistent session. With 0 the broker queues QoS 1 messages (display commands)
+     * while the board is away and replays them on every connect, so one oversized message would crash the
+     * connection again after each reboot. Retained messages are still delivered on subscribe. */
     status = nxd_mqtt_client_connect(&mqtt_client, &server_ip, NXD_MQTT_PORT,
-                                     MQTT_KEEP_ALIVE_TIMER, 0, NX_WAIT_FOREVER);
+                                     MQTT_KEEP_ALIVE_TIMER, 1, NX_WAIT_FOREVER);
     if (status != NXD_MQTT_SUCCESS){
                 printf("MQTT connect failed with code: %d\r\n", status);
     }
