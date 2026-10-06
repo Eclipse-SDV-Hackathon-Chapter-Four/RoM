@@ -12,7 +12,8 @@
  */
 
 #include "cloud_config.h"
-#include "nanoprintf.h" 
+#include "nanoprintf.h"
+#include "screen.h"
 #include "sensor.h"
 #include "telemetry.h"
 #include <stdio.h>
@@ -103,6 +104,8 @@ void telemetry_thread_entry(ULONG parameter)
 {
     //UINT status;
     sensor_data new_sensor_data;
+    char l0[22], l1[22], l2[22], l3[22];
+    const char* lines[4] = { l0, l1, l2, l3 };
 
     printf("Starting telemetry thread\r\n\r\n");
 
@@ -122,6 +125,13 @@ void telemetry_thread_entry(ULONG parameter)
         memcpy(new_sensor_data.magnetic_mG, 
                lis2mdl_data.magnetic_mG,
                sizeof(lis2mdl_data.magnetic_mG));
+
+        // Update the OLED with the readings just acquired (npf_snprintf: no float support in snprintf).
+        npf_snprintf(l0, sizeof(l0), "T:%.1fC H:%.0f%%", (double)new_sensor_data.temperature_degC, (double)new_sensor_data.humidity_perc);
+        npf_snprintf(l1, sizeof(l1), "P:%.0fhPa", (double)new_sensor_data.pressure_hPa);
+        npf_snprintf(l2, sizeof(l2), "A:%.0f,%.0f,%.0f", (double)new_sensor_data.acceleration_mg[0], (double)new_sensor_data.acceleration_mg[1], (double)new_sensor_data.acceleration_mg[2]);
+        npf_snprintf(l3, sizeof(l3), "M:%.0f,%.0f,%.0f", (double)new_sensor_data.magnetic_mG[0], (double)new_sensor_data.magnetic_mG[1], (double)new_sensor_data.magnetic_mG[2]);
+        screen_print_small(lines, 4);
 
         if (data_changed(&current_sensor_data, &new_sensor_data)){
             #ifdef LOG_TELEMETRY

@@ -96,7 +96,7 @@ static void mqtt_thread_work(NX_IP *ip_ptr, NX_PACKET_POOL *pool_ptr){
 
     printf("Creating MQTT client\r\n");
     /* Create MQTT client instance. */
-    status = nxd_mqtt_client_create(&mqtt_client, MQTT_CLIENT_NAME, MQTT_CLIENT_NAME, STRLEN(MQTT_CLIENT_NAME),
+    status = nxd_mqtt_client_create(&mqtt_client, MQTT_CLIENT_NAME, MQTT_CLIENT_ID, STRLEN(MQTT_CLIENT_ID),
                                     ip_ptr, pool_ptr, (VOID *)mqtt_client_stack, sizeof(mqtt_client_stack),
                                     MQTT_THREAD_PRIORTY, NX_NULL, 0);
 
