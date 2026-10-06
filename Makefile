@@ -1,11 +1,16 @@
 # Made with Claude (Claude Code, Anthropic)
 # Shortcuts for the dev stack. Run `make help` to list them.
-DC = docker compose -f infra/docker-compose.yml
+# Containers: docker if installed, otherwise podman (Fedora). Override: make DC_BIN="podman compose" up
+DC_BIN ?= $(shell command -v docker >/dev/null 2>&1 && echo "docker compose" || echo "podman compose")
+DC = $(DC_BIN) -f infra/docker-compose.yml
+# Local virtualenv (no containers for Python): needs only python3 with the venv module.
+VENV = .venv
+PY = $(VENV)/bin/python
 
-.PHONY: help up down logs kuksa sim sim-up guardian shell test
+.PHONY: help up down logs kuksa sim sim-up guardian venv sim-local test-local shell test
 
 help:   ## list targets
-	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
+	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
 
 up:     ## start databroker + mosquitto in the background
 	$(DC) up -d databroker mosquitto
@@ -28,6 +33,20 @@ sim-up: ## databroker + simulator in the background; then `make kuksa` in anothe
 guardian: ## databroker + sine-wave simulator + guardian, follows guardian logs (Ctrl+C stops following)
 	$(DC) --profile tools up -d --build databroker simulator guardian
 	$(DC) --profile tools logs -f guardian
+
+venv:   ## create .venv and install requirements.txt (reruns when it changes)
+$(VENV)/.installed: requirements.txt
+	python3 -m venv $(VENV)
+	$(PY) -m pip install -q -r requirements.txt
+	touch $@
+venv: $(VENV)/.installed
+
+sim-local: venv ## databroker in a container, simulator in the local .venv (foreground, Ctrl+C stops)
+	$(DC) up -d databroker
+	KUKSA_HOST=127.0.0.1 $(PY) -m simulator.simulator
+
+test-local: venv ## run pytest in the local .venv
+	$(PY) -m pytest -q common/ simulator/ guardian/
 
 shell:  ## bash in the python venv image
 	$(DC) run --rm dev bash
