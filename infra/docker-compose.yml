@@ -29,6 +29,20 @@ services:
     volumes: [kuksa-history:/history]
     depends_on: [databroker]
 
+  simulator:
+    profiles: ["tools"]          # sine wave 30-69 °C into KUKSA; tune with SIM_* env vars
+    image: rom-python
+    build: *pyimage
+    working_dir: /app
+    volumes: ["..:/app"]
+    command: python -m simulator.simulator
+    restart: on-failure          # databroker may not accept connections yet on first start
+    environment:
+      KUKSA_HOST: databroker
+      SIM_HZ: ${SIM_HZ:-2}
+      SIM_PERIOD_S: ${SIM_PERIOD_S:-120}
+    depends_on: [databroker]
+
   dev:
     profiles: ["tools"]          # only started on demand
     image: rom-python
