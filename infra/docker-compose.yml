@@ -43,6 +43,17 @@ services:
       SIM_PERIOD_S: ${SIM_PERIOD_S:-120}
     depends_on: [databroker]
 
+  guardian:
+    profiles: ["tools"]          # reads the battery temp from KUKSA, logs state changes as JSON
+    image: rom-python
+    build: *pyimage
+    working_dir: /app
+    volumes: ["..:/app"]
+    command: python -m guardian.guardian --kuksa
+    environment:
+      KUKSA_HOST: databroker
+    depends_on: [databroker]
+
   dev:
     profiles: ["tools"]          # only started on demand
     image: rom-python
