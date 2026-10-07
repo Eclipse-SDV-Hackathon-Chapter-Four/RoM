@@ -10,4 +10,4 @@ expected_faults: [battery_guardian.signal_stale]
 max_detect_ms: 4000
 baseline: {min_c: 25, max_c: 32, period_s: 120}
 faults:
-  - {at_s: 10, duration_s: 8, target: publisher, type: drop, params: {probability: 1.0}}
+  - {at_s: 10, duration_s: 8, target: publisher, type: drop, params: {probability: 1.0, topic: signal}}

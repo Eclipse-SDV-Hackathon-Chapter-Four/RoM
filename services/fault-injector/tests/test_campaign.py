@@ -75,6 +75,9 @@ def test_invalid_campaigns(change, message):
     ({"at_s": 0, "target": "publisher", "type": "drop", "cell": 1}, "no cell"),
     ({"at_s": 0, "target": "simulator", "type": "stuck", "params": [1]}, "params"),
     ({"at_s": 0, "target": "simulator", "type": "stuck", "speed": 1}, "unknown keys"),
+    ({"at_s": 0, "target": "simulator", "type": "heartbeat_loss", "cell": 1}, "whole source"),
+    ({"at_s": 0, "target": "simulator", "type": "databroker_down"}, "type"),
+    ({"at_s": 0, "target": "publisher", "type": "heartbeat_loss"}, "type"),
     ("stuck", "mapping"),
 ])
 def test_invalid_faults(fault, message):
@@ -121,3 +124,18 @@ def test_load_by_name_path_and_errors(tmp_path):
         campaign.load(str(p))
     with pytest.raises(CampaignError, match="no campaign file"):
         campaign.load("does_not_exist")
+
+
+def test_heartbeat_and_databroker_faults_are_valid_and_pass_their_params_on():
+    c = campaign.parse(with_(faults=[
+        {"at_s": 1, "duration_s": 5, "target": "simulator", "type": "heartbeat_loss", "params": {"component": "chip"}},
+        {"at_s": 1, "duration_s": 5, "target": "publisher", "type": "databroker_down"},
+        {"at_s": 2, "duration_s": 5, "target": "publisher", "type": "drop", "params": {"topic": "heartbeat"}}]))
+    assert c.faults[0].request() == {"type": "heartbeat_loss", "params": {"component": "chip"}}
+    assert c.faults[1].request() == {"type": "databroker_down", "params": {}}
+    assert c.faults[2].request()["params"] == {"topic": "heartbeat"}
+
+
+def test_heartbeat_codes_are_valid_expected_faults():
+    c = campaign.parse(with_(expected_faults=["battery_guardian.chip_silent", "battery_guardian.uprotocol_lost"]))
+    assert c.expected_faults == ["battery_guardian.chip_silent", "battery_guardian.uprotocol_lost"]

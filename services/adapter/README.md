@@ -2,12 +2,29 @@
 # adapter — MQTT → KUKSA
 
 Subscribes to `rom/sensor/battery/temp`, validates each payload against the contract
-(`rom_common/contracts.py` in `libs/rom-common`) and writes `temp_c` to `Vehicle.Powertrain.TractionBattery.Temperature.Max`
-in the KUKSA Databroker.
+(`rom_common/contracts.py` in `libs/rom-common`) and writes `temp_c` to the KUKSA Databroker in one call:
+`Vehicle.Powertrain.TractionBattery.Cells.Cell<ADAPTER_CELL>.Temperature` (default cell 1, the board is one cell)
+and `Temperature.Max`. A simulator fills the other cells in hardware mode (`SIM_CELLS=2,3,4`, done by `make hw`).
 
 ```
 MCU sensor --MQTT--> adapter --gRPC set--> KUKSA Databroker
+                       └─ heartbeats: Vehicle.RoM.Heartbeat.Adapter / .Chip
 ```
+
+## Heartbeats
+
+Every `HEARTBEAT_PERIOD_MS` (500) the adapter writes two counters into KUKSA; the vss-uprotocol-client forwards them
+to the guardian:
+
+| Signal | Written | So the guardian can tell |
+|---|---|---|
+| `Heartbeat.Adapter` | always, while the process runs | adapter dead (`adapter down`) |
+| `Heartbeat.Chip` | a counter (1, 2, …) while the board is alive: telemetry arrived within `CHIP_TIMEOUT_MS` (1500) **and** the board's `rom/sensor/battery/status` is not `offline`; **`0`** while it is not (the guardian reacts at once, no second timeout) | board silent (`chip silent`) |
+
+`offline` (the board's MQTT Last Will, or a clean shutdown) stops the chip heartbeat at once; telemetry that arrives
+after it revives it ("online" alone does not). Invalid telemetry does not count as a sign of life. No firmware change
+is needed: the board already sends `seq` every 500 ms. A dedicated firmware heartbeat would also prove the network
+stack is alive while the sensor read hangs; that is a possible follow-up (needs the ARM toolchain and a re-flash).
 
 ## Run
 
@@ -20,7 +37,8 @@ make adapter                                         # only the adapter, foregro
 ```
 
 Without containers: `make up`, `make venv`, then `.venv/bin/rom-adapter`.
-Only one writer of the VSS path at a time: run the adapter **or** the simulator, not both.
+Only one writer per VSS path: the adapter owns cell `ADAPTER_CELL`, `Max` and the chip heartbeat, so run the
+simulator as `SIM_CELLS=2,3,4` next to it (`make hw`), never as all four cells.
 
 > If port 1883 is already taken by a system `mosquitto` service (`systemctl is-active mosquitto`),
 > `make up` fails with "address already in use". Either stop it (`sudo systemctl stop mosquitto`) or use it. Note that the default system config
@@ -32,10 +50,12 @@ Only one writer of the VSS path at a time: run the adapter **or** the simulator,
 |---|---|
 | `MQTT_HOST` / `MQTT_PORT` | `localhost` / `1883` |
 | `KUKSA_HOST` / `KUKSA_PORT` | `127.0.0.1` / `55555` |
+| `ADAPTER_CELL` | `1` |
+| `HEARTBEAT_PERIOD_MS`, `CHIP_TIMEOUT_MS` | `500`, `1500` |
 
 ## Mapping
 
-`MAPPING` at the top of `adapter/mqtt_kuksa_adapter.py`: `topic -> (VSS path, scale, offset)`.
+`build_mapping()` at the top of `adapter/mqtt_kuksa_adapter.py`: `topic -> [(VSS path, scale, offset), ...]`.
 Add a new signal there, nowhere else.
 
 ## Log events (JSON lines on stdout)

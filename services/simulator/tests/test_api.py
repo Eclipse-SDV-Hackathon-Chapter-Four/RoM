@@ -106,3 +106,10 @@ def test_run_passes_wave_settings_to_the_loop(env):
 def test_run_rejects_bad_wave_settings(env, bad):
     server, _, session, _ = env
     assert call(server, "POST", "/run", bad)[0] == 422 and session.take_restart() is None
+
+
+def test_heartbeat_loss_over_the_api(env):
+    server, faults, _, _ = env
+    status, fault = call(server, "POST", "/faults", {"type": "heartbeat_loss", "params": {"component": "chip"}})
+    assert status == 201 and faults.heartbeat_lost("chip")
+    assert call(server, "POST", "/faults", {"type": "heartbeat_loss", "params": {"component": "x"}})[0] == 422

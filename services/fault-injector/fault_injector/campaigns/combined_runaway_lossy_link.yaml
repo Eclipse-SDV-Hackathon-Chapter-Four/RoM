@@ -12,5 +12,5 @@ max_detect_ms: 40000
 baseline: {min_c: 25, max_c: 32, period_s: 120}
 faults:
   - {at_s: 10, duration_s: 50, target: simulator, type: drift, cell: 1, params: {rate_c_per_s: 0.7}}
-  - {at_s: 15, duration_s: 30, target: publisher, type: duplicate}
-  - {at_s: 15, duration_s: 30, target: publisher, type: delay, params: {ms: 600}}
+  - {at_s: 15, duration_s: 30, target: publisher, type: duplicate, params: {topic: signal}}
+  - {at_s: 15, duration_s: 30, target: publisher, type: delay, params: {ms: 600, topic: signal}}

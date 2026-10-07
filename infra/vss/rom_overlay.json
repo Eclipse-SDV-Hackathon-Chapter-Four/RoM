@@ -68,6 +68,33 @@
             }
           }
         }
+      },
+      "RoM": {
+        "type": "branch",
+        "description": "RoM custom signals.",
+        "children": {
+          "Heartbeat": {
+            "type": "branch",
+            "description": "Liveness counters written by the producers and forwarded to the guardian.",
+            "children": {
+              "Chip": {
+                "type": "sensor",
+                "datatype": "double",
+                "description": "RoM heartbeat of the physical sensor chip (written by the adapter while its telemetry arrives, or simulated): a counter that increases while it is alive. Custom signal."
+              },
+              "Adapter": {
+                "type": "sensor",
+                "datatype": "double",
+                "description": "RoM heartbeat of the MQTT to KUKSA adapter: a counter that increases while it is alive. Custom signal."
+              },
+              "Simulator": {
+                "type": "sensor",
+                "datatype": "double",
+                "description": "RoM heartbeat of the simulator process: a counter that increases while it is alive. Custom signal."
+              }
+            }
+          }
+        }
       }
     }
   }
