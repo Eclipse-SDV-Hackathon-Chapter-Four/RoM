@@ -1,6 +1,6 @@
 # Made with Claude (Claude Code, Anthropic) — shared RoM "rom_common" library, used by all components.
 """Thin kuksa-client helper (imported lazily). One persistent connection per process."""
-from typing import Dict, Iterator, Tuple
+from typing import Dict, Iterator, Sequence, Tuple
 
 from . import config
 from .contracts import VSS_BATTERY_TEMP
@@ -37,3 +37,17 @@ def subscribe_temp(client, path: str = VSS_BATTERY_TEMP) -> Iterator[Tuple[float
         dp = updates.get(path)
         if dp is not None and dp.value is not None:
             yield float(dp.value), now_ms()
+
+
+def subscribe_values(client, paths: Sequence[str]) -> Iterator[Tuple[Dict[str, float], int]]:
+    """Yield ({path: value}, rx_ts_ms) per update batch, only the paths that came with that update.
+
+    A writer that sets several paths in one call (set_values) arrives as one batch, so a path that is
+    missing from a batch was not written. Blocks; run it in its own thread.
+    """
+    from .clock import now_ms
+
+    for updates in client.subscribe_current_values(list(paths)):
+        values = {p: float(dp.value) for p, dp in updates.items() if dp is not None and dp.value is not None}
+        if values:
+            yield values, now_ms()

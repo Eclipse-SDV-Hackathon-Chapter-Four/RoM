@@ -341,7 +341,7 @@ mod tests {
             }
             Ok(vec![
                 fault("battery_guardian.over_temp_warning", "BatteryOverTempWarning", true),
-                fault("battery_guardian.signal_stale", "BatteryTempSignalStale", false),
+                fault("battery_guardian.cell2.signal_stuck", "BatteryCell2TempStuck", false),
             ])
         }
 
@@ -349,6 +349,8 @@ mod tests {
             let f = self.get_all_faults(path)?.into_iter().find(|f| f.code == code).ok_or(DfmError::NotFound)?;
             let env = HashMap::from([
                 ("temp_c".to_string(), "38.4".to_string()),
+                ("cell".to_string(), "2".to_string()),
+                ("cells".to_string(), "38.4,31.2,,30.9".to_string()),
                 ("seq".to_string(), "4".to_string()),
                 ("reason".to_string(), "getting hot".to_string()),
                 ("msg_id".to_string(), "01a11579-8206-7984-8a95-5cb1f12f78e7".to_string()),
@@ -388,7 +390,8 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         let items = body["items"].as_array().unwrap();
         assert_eq!(items.len(), 2);
-        let first = &items[0];
+        assert_eq!(items[0]["code"], "battery_guardian.cell2.signal_stuck"); // sorted by code
+        let first = &items[1];
         assert_eq!(first["code"], "battery_guardian.over_temp_warning");
         assert_eq!(first["fault_name"], "BatteryOverTempWarning");
         assert_eq!(first["status"]["test_failed"], true);
@@ -404,7 +407,7 @@ mod tests {
         assert_eq!(codes, ["battery_guardian.over_temp_warning"]);
 
         let (_, body) = call(stub(false), "GET", "/?status%5Btest_failed%5D=false").await;
-        assert_eq!(body["items"][0]["code"], "battery_guardian.signal_stale");
+        assert_eq!(body["items"][0]["code"], "battery_guardian.cell2.signal_stuck");
 
         let (_, body) = call(stub(false), "GET", "/?severity=3").await;
         assert!(body["items"].as_array().unwrap().is_empty());
@@ -421,6 +424,8 @@ mod tests {
         assert_eq!(body["item"]["code"], "battery_guardian.over_temp_warning");
         let env = &body["environment_data"];
         assert_eq!(env["temp_c"], 38.4);
+        assert_eq!(env["cell"], 2);
+        assert_eq!(env["cells"], "38.4,31.2,,30.9"); // not a number: stays a string
         assert_eq!(env["seq"], 4);
         assert_eq!(env["reason"], "getting hot");
         assert_eq!(env["msg_id"], "01a11579-8206-7984-8a95-5cb1f12f78e7");
@@ -440,8 +445,8 @@ mod tests {
     #[tokio::test]
     async fn delete_clears_through_the_dfm() {
         let dfm = stub(false);
-        assert_eq!(call(dfm.clone(), "DELETE", "/battery_guardian.signal_stale").await.0, StatusCode::NO_CONTENT);
+        assert_eq!(call(dfm.clone(), "DELETE", "/battery_guardian.cell2.signal_stuck").await.0, StatusCode::NO_CONTENT);
         assert_eq!(call(dfm.clone(), "DELETE", "/").await.0, StatusCode::NO_CONTENT);
-        assert_eq!(*dfm.deleted.lock().unwrap(), ["battery_guardian/battery_guardian.signal_stale", "battery_guardian"]);
+        assert_eq!(*dfm.deleted.lock().unwrap(), ["battery_guardian/battery_guardian.cell2.signal_stuck", "battery_guardian"]);
     }
 }

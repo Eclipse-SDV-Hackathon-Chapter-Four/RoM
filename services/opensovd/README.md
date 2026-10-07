@@ -43,7 +43,7 @@ Base `http://localhost:7690/sovd`. Entities: component `rom-hpc` hosting app `ba
 | `GET /v1/components/rom-hpc/hosts` | `battery_guardian` |
 | `GET /v1/apps/battery_guardian/faults` | `{"items": [Fault]}`, sorted by `code` |
 | `GET .../faults?status[testFailed]=1` | filter by DTC status bit (repeat = OR; camelCase or snake_case; `status[mask]=0x2F`), `?severity=N` |
-| `GET .../faults/{code}` | `{"item": Fault, "environment_data": {temp_c, reason, seq, msg_id, ts_ms}}` |
+| `GET .../faults/{code}` | `{"item": Fault, "environment_data": {cell, temp_c, cells, reason, seq, msg_id, ts_ms, run_id}}` |
 | `DELETE .../faults`, `DELETE .../faults/{code}` | clear in the DFM → `204` |
 
 Fault JSON (same shape as the OpenSOVD Classic Diagnostic Adapter), real output from `dfm_bin`:
@@ -81,8 +81,10 @@ Errors use the SOVD `GenericError` body (`error_code: "vendor-specific"`):
 ## Contract with `services/dfm`
 
 - DFM entity path = catalog `id` = SOVD app id: `battery_guardian`. Fault codes = catalog `Text` ids
-  (`battery_guardian.over_temp_warning`, ...). Environment keys `temp_c`, `reason`, `seq`, `msg_id`, `ts_ms`
-  are passed through unchanged.
+  ([`services/dfm/catalog/battery_guardian.json`](../dfm/catalog/battery_guardian.json)): 5 pack codes
+  (`battery_guardian.over_temp_warning`, ...) and 3 per cell (`battery_guardian.cell2.signal_stuck`, ...).
+  Environment keys `cell`, `temp_c`, `cells`, `reason`, `seq`, `msg_id`, `ts_ms`, `run_id` are passed through
+  unchanged (numbers become JSON numbers; `cells` = `"31.2,30.1,,29.9"` stays a string).
 - Same `fault-lib` rev on both sides (the iceoryx2 message layout must match).
 - iceoryx2 needs the same `/dev/shm` **and** `/tmp/iceoryx2` in both containers, with the same lifetime,
   and both processes running as the same user. Compose mounts the tmpfs volumes `iceoryx2-shm` and

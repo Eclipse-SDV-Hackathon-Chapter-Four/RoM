@@ -5,6 +5,7 @@ seed: 7
 hazard: "H4: loss of the temperature source"
 safety_goal: "SG4: a silent signal is a sensor fault after 2 s"
 expected_state: SENSOR_FAULT
+expected_faults: [battery_guardian.signal_stale]
 max_detect_ms: 4000             # guardian STALE_MS = 2 s
 baseline: {min_c: 25, max_c: 32, period_s: 120}
 faults:

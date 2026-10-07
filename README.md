@@ -88,7 +88,8 @@ pytest -q
 
 The simulator writes **four battery cells** (`Vehicle.Powertrain.TractionBattery.Cells.Cell1..4.Temperature`, a custom
 overlay in [`infra/vss/rom_cells.json`](infra/vss/rom_cells.json) that the databroker loads next to the standard VSS)
-and `Temperature.Max` = the hottest cell written. The guardian still sees only `Max`.
+and `Temperature.Max` = the hottest cell written. The guardian watches **every cell** (uProtocol `…/1001/1/8002`)
+and reports DFM faults per cell on `…/1002/1/8003`; see [`docs/diagnostics-4-cells.md`](docs/diagnostics-4-cells.md).
 
 Faults are injected into the running stack over HTTP, by hand or by the Fault Campaign Runner:
 

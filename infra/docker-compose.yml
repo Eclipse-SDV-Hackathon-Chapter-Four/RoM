@@ -67,7 +67,7 @@ services:
 
   # --- Service images (services/*/Dockerfile): self-contained, no bind mounts, env-only config ---
   vss-uprotocol-client:
-    profiles: ["tools"]          # KUKSA -> uProtocol over Zenoh (topic up://rom-vehicle/1001/1/8001)
+    profiles: ["tools"]          # KUKSA -> uProtocol over Zenoh: cells up://rom-vehicle/1001/1/8002, Max .../8001
     build: {context: .., dockerfile: services/vss-uprotocol-client/Dockerfile}
     image: localhost/rom/vss-uprotocol-client:dev
     restart: on-failure
@@ -80,12 +80,13 @@ services:
     depends_on: [databroker]
 
   guardian:
-    profiles: ["tools"]          # reads the battery temp over uProtocol (never KUKSA), logs state changes as JSON
+    profiles: ["tools"]          # reads the 4 cells over uProtocol (never KUKSA); fault events up://rom-vehicle/1002/1/8003
     build: {context: .., dockerfile: services/guardian/Dockerfile}
     image: localhost/rom/guardian:dev
     restart: on-failure
     environment:
       ZENOH_CONNECT: tcp/vss-uprotocol-client:7447
+      ZENOH_LISTEN: tcp/0.0.0.0:7447   # the DFM reporter (and rom-up-monitor --faults) connects here for fault events
       MQTT_HOST: mosquitto             # display command (rom/actuator/display/cmd) goes out over MQTT
     depends_on: [vss-uprotocol-client, mosquitto]
 
@@ -110,7 +111,7 @@ services:
 
   # --- TODO placeholders: images build and start, log "not_implemented" and exit ---
   dfm:
-    profiles: ["todo"]
+    profiles: ["tools", "todo"]  # in "tools" too: opensovd (tools) depends on it
     build: {context: .., dockerfile: services/dfm/Dockerfile}
     image: localhost/rom/dfm:dev
     volumes: *iceoryx2                 # iceoryx2 shared memory + service files, shared with opensovd

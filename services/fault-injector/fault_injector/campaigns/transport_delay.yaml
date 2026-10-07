@@ -5,6 +5,7 @@ seed: 7
 hazard: "H7: delayed delivery makes the guardian act on old data"
 safety_goal: "SG5: late data must not be treated as current"
 expected_state: SENSOR_FAULT
+expected_faults: [battery_guardian.signal_stale]
 max_detect_ms: 5000
 baseline: {min_c: 25, max_c: 32, period_s: 120}
 faults:
