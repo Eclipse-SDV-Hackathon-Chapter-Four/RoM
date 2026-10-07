@@ -20,10 +20,12 @@ import sys
 import threading
 import time
 
-from rom_common import jsonlog
-from rom_common.contracts import CLEAR, CRITICAL, MONITORING, SENSOR_FAULT, WARNING
+from rom_common import clock, jsonlog
+from rom_common.contracts import (CLEAR, CRITICAL, MONITORING, QOS_DISPLAY_CMD, SENSOR_FAULT, TOPIC_DISPLAY_CMD, WARNING,
+                                  build_display_cmd)
 
 MITIGATING = "MITIGATING"
+DISPLAY_PERIOD_S = 1.0  # re-publish the display command this often: fresh temp_c, and proof the guardian is alive
 TICK_S = 0.5
 
 WARN_C = float(os.getenv("WARN_C", 38.0))
@@ -104,6 +106,13 @@ def show(g, t, temp):
     print(f"{t:>6.1f}  {str(temp):>6}  {state}{mark}", flush=True)
 
 
+def display_cmd(state, temp, reason, seq, ts_ms):
+    """Payload for TOPIC_DISPLAY_CMD. MITIGATING is not a contract state, so it is shown as CRITICAL;
+    the reason ("cooling requested" / "cooling in progress") still says what is going on."""
+    shown = CRITICAL if state == MITIGATING else state
+    return build_display_cmd(shown, None if temp is None else round(temp, 2), reason, seq, ts_ms)
+
+
 def subscribe_temp(samples, log):
     """Push every uProtocol sample into `samples`. Zenoh reconnects on its own (stale while down)."""
     from rom_uprotocol import uris
@@ -120,16 +129,20 @@ def run_uprotocol():
     log = jsonlog.get_logger("guardian")
     samples = queue.Queue()
     transport = subscribe_temp(samples, log)  # keep a reference, or the Zenoh session is closed
+    from rom_common import mqtt  # only the live mode needs paho
+    display = mqtt.MqttClient(f"rom-guardian-{os.getpid()}").connect()  # display commands for the device OLED
     try:
-        loop(samples, log)
+        loop(samples, log, display)
     finally:
+        display.close()
         transport.close_sync()  # an open Zenoh session keeps the process alive after SIGTERM
         log.log("stopped")
 
 
-def loop(samples, log):
+def loop(samples, log, display=None):
     g, start = Guardian(), time.monotonic()
     last = None  # last uProtocol sample: its msg_id/seq link a state change to the message that caused it
+    display_seq, last_display = 0, 0.0
     # Tick even without samples, otherwise a dead sensor would never be detected as stale.
     while True:
         try:
@@ -142,6 +155,12 @@ def loop(samples, log):
         if state != before:
             log.log("state_change", **{"from": before}, to=state, reason=reason, temp_c=round(g.temp, 2),
                     seq=last.seq if last else None, msg_id=last.msg_id if last else None)
+        # State shown on the device display (QoS 1, retained): on every change and as a heartbeat.
+        now = time.monotonic()
+        if display is not None and (state != before or now - last_display >= DISPLAY_PERIOD_S):
+            display_seq, last_display = display_seq + 1, now
+            display.publish(TOPIC_DISPLAY_CMD, display_cmd(state, g.temp, reason, display_seq, clock.now_ms()),
+                            qos=QOS_DISPLAY_CMD, retain=True)
 
 
 def _interrupt(*_):
