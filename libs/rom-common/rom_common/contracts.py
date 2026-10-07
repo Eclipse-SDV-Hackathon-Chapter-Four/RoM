@@ -81,9 +81,11 @@ FAULT_OVER_TEMP_CRITICAL = f"{DFM_ENTITY}.over_temp_critical"
 FAULT_MITIGATION_FAILED = f"{DFM_ENTITY}.mitigation_failed"
 FAULT_SIGNAL_STALE = f"{DFM_ENTITY}.signal_stale"          # the whole cell stream is silent
 FAULT_CELL_IMBALANCE = f"{DFM_ENTITY}.cell_imbalance"
+FAULT_LINK_INTEGRITY = f"{DFM_ENTITY}.link_integrity"      # duplicated / reordered cell messages (discarded)
 PACK_FAULTS = (FAULT_OVER_TEMP_WARNING, FAULT_OVER_TEMP_CRITICAL, FAULT_MITIGATION_FAILED, FAULT_SIGNAL_STALE,
-               FAULT_CELL_IMBALANCE)
-CELL_FAULT_KINDS = ("signal_stale", "signal_stuck", "out_of_range")
+               FAULT_CELL_IMBALANCE, FAULT_LINK_INTEGRITY)
+CELL_FAULT_KINDS = ("signal_stale", "signal_stuck", "out_of_range")   # the cell is left out of the pack state
+CELL_DIAG_KINDS = ("rate_implausible",)                              # diagnostic only: the reading is kept
 # Heartbeat root causes: the one closest to the guardian is raised (HEARTBEAT_DIAGNOSIS_ORDER), not its symptoms.
 HEARTBEAT_FAULTS = {
     COMPONENT_UPROTOCOL: f"{DFM_ENTITY}.uprotocol_lost",
@@ -96,12 +98,13 @@ HEARTBEAT_FAULTS = {
 
 def cell_fault(cell: int, kind: str) -> str:
     """Per-cell sensor fault code, e.g. cell_fault(2, "signal_stuck") -> battery_guardian.cell2.signal_stuck."""
-    if kind not in CELL_FAULT_KINDS or not 1 <= cell <= N_CELLS:
+    if kind not in CELL_FAULT_KINDS + CELL_DIAG_KINDS or not 1 <= cell <= N_CELLS:
         raise ValueError(f"no fault code for cell {cell!r} / {kind!r}")
     return f"{DFM_ENTITY}.cell{cell}.{kind}"
 
 
-FAULT_CODES = (PACK_FAULTS + tuple(cell_fault(c, k) for c in range(1, N_CELLS + 1) for k in CELL_FAULT_KINDS)
+FAULT_CODES = (PACK_FAULTS
+               + tuple(cell_fault(c, k) for c in range(1, N_CELLS + 1) for k in CELL_FAULT_KINDS + CELL_DIAG_KINDS)
                + tuple(HEARTBEAT_FAULTS.values()))
 
 

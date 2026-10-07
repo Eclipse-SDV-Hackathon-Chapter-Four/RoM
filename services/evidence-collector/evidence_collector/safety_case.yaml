@@ -14,6 +14,7 @@ hazards:
   - {id: H8, description: "The sensor chip hangs or loses power while data keeps flowing"}
   - {id: H9, description: "The signal producer process is dead"}
   - {id: H10, description: "The KUKSA databroker is unavailable"}
+  - {id: H11, description: "Duplicated or reordered messages make the guardian act on repeated or old data"}
 
 safety_goals:
   - {id: SG1, hazards: [H1, H6], description: "Warn at 38 °C and request cooling at 45 °C pack maximum, also with a faulty sensor or a degraded link"}
@@ -22,12 +23,14 @@ safety_goals:
   - {id: SG4, hazards: [H4, H5, H6], description: "A silent signal or cell is a sensor fault after 2 s; the pack stays monitored on the other cells"}
   - {id: SG5, hazards: [H7], description: "Late data must not be treated as current"}
   - {id: SG6, hazards: [H6, H8, H9, H10], description: "Name the failing component (link, databroker, producer, chip) within 3 s"}
+  - {id: SG7, hazards: [H11], description: "Duplicated / reordered messages are discarded or harmless; repeated cell messages name the degraded link within 3 s"}
+  - {id: SG8, hazards: [H3], description: "Name an implausible rate of change per cell within 1 s, without discarding a hot reading"}
 
 safety_requirements:
   - id: SR-01
     safety_goal: SG1
     description: "over_temp_warning at >= 38 °C, over_temp_critical and MITIGATING at >= 45 °C on the hottest valid cell"
-    campaigns: [thermal-runaway-01, combined-runaway-lossy-link-01, cell-faulty-while-other-hot-01]
+    campaigns: [thermal-runaway-01, combined-runaway-lossy-link-01, cell-faulty-while-other-hot-01, reorder-during-runaway-01]
   - id: SR-02
     safety_goal: SG2
     description: "A cell unchanged for 10 s raises its own signal_stuck DTC and is left out of the pack state"
@@ -48,3 +51,15 @@ safety_requirements:
     safety_goal: SG6
     description: "A lost heartbeat raises the DTC of the root cause closest to the guardian within 3 s"
     campaigns: [chip-heartbeat-loss-01, producer-heartbeat-loss-01, databroker-down-01, uprotocol-heartbeat-loss-01]
+  - id: SR-07
+    safety_goal: SG7
+    description: "A cell message whose seq repeats or goes back is discarded; 3 within 5 s raise link_integrity, the state stays"
+    campaigns: [transport-duplicate-01, transport-reorder-01]
+  - id: SR-08
+    safety_goal: SG8
+    description: "A cell changing faster than 10 °C/s raises its own rate_implausible DTC; the reading is kept"
+    campaigns: [sensor-spike-cell2-01]
+  - id: SR-09
+    safety_goal: SG7
+    description: "Duplicated / reordered heartbeats raise no fault, the state stays MONITORING"
+    campaigns: [heartbeat-duplicate-reorder-01]

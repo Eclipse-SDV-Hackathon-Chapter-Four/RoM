@@ -82,7 +82,7 @@ def test_main_writes_to_kuksa_vss_path(monkeypatch):
     monkeypatch.setattr(simulator.kuksa, "open_client", lambda: fake)
     monkeypatch.setattr(simulator.kuksa, "set_values", lambda c, values: calls.append((c, values)))
     monkeypatch.setattr(simulator.time, "sleep", lambda s: None)
-    simulator.main(["--hz", "1", "--period", "4", "--duration", "4", "--api-port", "0"])
+    simulator.main(["--hz", "1", "--period", "4", "--duration", "4", "--api-port", "0", "--max-slew", "0"])
     assert [v[VSS_BATTERY_TEMP] for _, v in calls] == [30.0, 49.5, 69.0, 49.5]
     assert all(c is fake for c, _ in calls) and fake.closed
 
@@ -231,3 +231,21 @@ def test_main_parses_sim_cells(monkeypatch):
 def test_main_rejects_bad_cells(bad):
     with pytest.raises(SystemExit):
         simulator.main(["--cells", bad, "--api-port", "0"])
+
+
+def test_slew_limit_keeps_a_new_run_continuous_but_lets_a_sensor_spike_through():
+    session = simulator.Session()
+    sent, n = [], {"i": 0}
+    def sleep(s):
+        n["i"] += 1
+        if n["i"] == 1:
+            session.restart(seed=0, run_id="r2", wave={"min_c": 10.0, "max_c": 20.0, "period_s": 4.0})
+    simulator.run(sent.append, JsonLogger("simulator", "r1", io.StringIO()), hz=1, period_s=8, duration_s=4,
+                  sleep=sleep, monotonic=lambda: 0.0, session=session, max_slew_c_per_s=5)
+    cell1 = [s[VSS_CELL_TEMPS[0]] for s in sent]
+    assert cell1[0] == sine_temp(0, 8) and all(abs(b - a) <= 5 for a, b in zip(cell1, cell1[1:]))
+
+    faults = FaultState(lambda: 0.0)
+    faults.add("spike", [1], {"delta": -15})
+    _, sent, _, _ = _run(hz=1, period_s=1000, duration_s=2, faults=faults, max_slew_c_per_s=5)
+    assert sent[0][VSS_CELL_TEMPS[0]] == round(sine_temp(0, 1000) - 15, 2)

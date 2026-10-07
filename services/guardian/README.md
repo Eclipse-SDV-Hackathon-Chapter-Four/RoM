@@ -14,6 +14,15 @@ Each cell is checked on its own: **stale** (missing 2 s while others arrive), **
 **hottest valid cell**, so one broken sensor never disarms the warning. `SENSOR_FAULT` only when nothing can be
 trusted: no cell message at all for 2 s ("stale signal"), or every cell faulty.
 
+## Signal integrity: duplicates, reordering, implausible rate
+
+- **Implausible rate**: a cell changing faster than `MAX_RATE_C_PER_S` (10 °C/s, measured since its last change, so
+  a frozen sensor catching up is no jump) raises `cellN.rate_implausible` for 2 s after the last such step. The
+  reading is **kept**: a hot value is never discarded, a real runaway can be fast (the DTC explains a false alarm).
+- **Duplicated / reordered messages**: a cell message whose `seq` repeats (`seq_duplicate`) or goes back
+  (`seq_reordered`) is logged with its `msg_id` and dropped before the state machine sees it; 3 within 5 s raise
+  `link_integrity`. A fall-back of more than 10 is a publisher restart and accepted. The state does not change.
+
 ## Heartbeats: which part of the chain broke
 
 Besides the cells the guardian listens to heartbeats on `up://<UP_AUTHORITY>/1001/1/8004`:
@@ -73,6 +82,7 @@ Image: `services/guardian/Dockerfile` → `localhost/rom/guardian:dev` (env-only
 | `WARN_C`, `CRIT_C` | `38`, `45` |
 | `STALE_MS`, `STUCK_S`, `MIN_PLAUSIBLE_C`, `MAX_PLAUSIBLE_C` | `2000`, `10`, `-40`, `150` |
 | `IMBALANCE_C`, `IMBALANCE_S` | `10`, `2` (cell spread → `cell_imbalance`) |
+| `MAX_RATE_C_PER_S` | `10` (faster → `cellN.rate_implausible`, reading kept) |
 | `HEARTBEAT_STALE_MS`, `REQUIRED_HEARTBEATS` | `1500`, `uprotocol,databroker` |
 | `MQTT_HOST`, `MQTT_PORT` | `localhost`, `1883` |
 | `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_*` | see `libs/rom-uprotocol` |

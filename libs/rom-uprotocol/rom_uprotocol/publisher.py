@@ -18,6 +18,7 @@ from typing import Callable, Mapping, Optional, Sequence
 
 from uprotocol.communication.upayload import UPayload
 from uprotocol.transport.builder.umessagebuilder import UMessageBuilder
+from uprotocol.uuid.serializer.uuidserializer import UuidSerializer
 from uprotocol.v1.uattributes_pb2 import UPayloadFormat
 from uprotocol.v1.ucode_pb2 import UCode
 from uprotocol.v1.umessage_pb2 import UMessage
@@ -31,6 +32,11 @@ from .contract import build_cells_msg, build_heartbeat_msg, build_signal_msg
 
 Send = Callable[[UMessage], UStatus]
 Interceptor = Callable[[UMessage, Send], UStatus]
+
+
+def msg_id(message: UMessage) -> str:
+    """The uProtocol message id as the subscriber logs it: the correlation ID from sender to evidence."""
+    return UuidSerializer.serialize(message.attributes.id)
 
 
 def _chain(send: Send, interceptors: Sequence[Interceptor]) -> Send:
@@ -66,15 +72,16 @@ class SignalPublisher:
                     make_payload(self.seq, clock.now_ms()), UPayloadFormat.UPAYLOAD_FORMAT_JSON)))
 
     def publish_json(self, make_payload: Callable[[int, int], bytes], **log_fields) -> UStatus:
-        status = self._send(self.build_json(make_payload))
+        message = self.build_json(make_payload)
+        status = self._send(message)
         if status.code != UCode.OK:
             self.failed += 1
-            self._emit("publish_failed", seq=self.seq, resource=self._topic.resource_id,
+            self._emit("publish_failed", seq=self.seq, msg_id=msg_id(message), resource=self._topic.resource_id,
                        code=UCode.Name(status.code), error=status.message)
         else:
             self.published += 1
-            self._emit("published", seq=self.seq, resource=self._topic.resource_id, **log_fields,
-                       published=self.published, failed=self.failed)
+            self._emit("published", seq=self.seq, msg_id=msg_id(message), resource=self._topic.resource_id,
+                       **log_fields, published=self.published, failed=self.failed)
         return status
 
     def build(self, vss_path: str, value: float, source_ts_ms: int) -> UMessage:
@@ -123,8 +130,8 @@ class HeartbeatPublisher:
         if result.code != UCode.OK:
             self.failed += 1
             if self._log is not None:
-                self._log.log("heartbeat_failed", component=component, code=UCode.Name(result.code),
-                              error=result.message)
+                self._log.log("heartbeat_failed", component=component, msg_id=msg_id(message),
+                              code=UCode.Name(result.code), error=result.message)
         else:
             self.published += 1
         return result

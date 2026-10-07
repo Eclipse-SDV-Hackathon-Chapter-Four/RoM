@@ -71,7 +71,9 @@ Zenoh keys follow up-spec, e.g. `up/rom-vehicle/1001/0/1/8002/{}/{}/{}/{}/{}`. `
 prints any of them.
 
 `seq` lets a consumer detect dropped / duplicated / reordered messages; the uProtocol message id
-(`msg_id`, a UUIDv7) is the correlation ID the guardian logs with every `state_change`.
+(`msg_id`, a UUIDv7) is the correlation ID of one message on every hop: the sender logs it on `published` /
+`publish_failed`, `TransportFaults(log=...)` on every `transport_fault` (`action` dropped / held / released /
+duplicated / delayed), the guardian with every `state_change` / `fault_event`, the DFM as `fault_msg_id`.
 
 ## Env variables
 

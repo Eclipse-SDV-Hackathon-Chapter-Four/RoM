@@ -1,0 +1,13 @@
+# Made with Claude (Claude Code, Anthropic)
+# Cell messages swap places in pairs: an older value arrives after a newer one and must not be used.
+# Needs the vss-uprotocol-client fault API (FAULT_API_PORT, PUBLISHER_URL).
+run_id: transport-reorder-01
+seed: 7
+hazard: "H11: reordered cell messages on the uProtocol link"
+safety_goal: "SG7: discard duplicated / reordered cell messages and name the link within 3 s"
+expected_state: MONITORING
+expected_faults: [battery_guardian.link_integrity]
+max_detect_ms: 4000
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 10, target: publisher, type: reorder, params: {topic: signal}}

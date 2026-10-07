@@ -9,6 +9,11 @@ Every cell is monitored on its own. A bad cell sensor raises its own DFM fault a
 thermal state machine keeps running on the max of the healthy cells, so one bad sensor never disarms
 the warning. Faults go out as FAILED / PASSED edges on up://<UP_AUTHORITY>/1002/1/8003 (DFM reporter input).
 
+Signal integrity: a cell changing faster than MAX_RATE_C_PER_S raises cellN.rate_implausible, but the reading is
+kept (a hot value is never discarded: a real runaway can be fast). Cell messages that repeat or go back in `seq`
+(duplicated / reordered on the link) are discarded; LINK_ANOMALIES of them within LINK_WINDOW_S raise
+link_integrity. Neither changes the state: the data the state machine sees stays clean.
+
 Heartbeats (up://<UP_AUTHORITY>/1001/1/8004) tell it which part of the chain broke: the uProtocol link, the KUKSA
 databroker, the adapter / simulator or the physical chip. A lost heartbeat makes all data suspect: SENSOR_FAULT with a
 short reason ("uP link lost", "KUKSA down", "adapter down", "sim down", "chip silent") and the DFM code of the root
@@ -57,16 +62,23 @@ MIN_C, MAX_C = _T.min_plausible_c, _T.max_plausible_c
 STALE_S = _T.stale_ms / 1000
 STUCK_S = _T.stuck_s
 IMBALANCE_C, IMBALANCE_S = _T.imbalance_c, _T.imbalance_s
+MAX_RATE_C_PER_S = _T.max_rate_c_per_s
+RATE_MIN_DT_S = 0.5     # nominal sample period: two changes closer than this are compared as if 0.5 s apart
+RATE_HOLD_S = 2.0       # rate_implausible stays FAILED this long after the last implausible step
+LINK_ANOMALIES, LINK_WINDOW_S = 3, 5.0   # duplicated / reordered cell messages within the window -> link_integrity
+SEQ_RESTART_GAP = 10    # seq falling back further than this is a publisher restart, not a reordered message
 MITIGATION_TIMEOUT_S = 5
 
 # Human-readable reason per cell fault kind (also the SENSOR_FAULT reason when every cell has that fault).
-CELL_REASONS = {"signal_stale": "stale signal", "signal_stuck": "stuck signal", "out_of_range": "out of range"}
+CELL_REASONS = {"signal_stale": "stale signal", "signal_stuck": "stuck signal", "out_of_range": "out of range",
+                "rate_implausible": "implausible rate"}
 PACK_REASONS = {
     contracts.FAULT_OVER_TEMP_WARNING: "getting hot",
     contracts.FAULT_OVER_TEMP_CRITICAL: "too hot",
     contracts.FAULT_MITIGATION_FAILED: "mitigation failed",
     contracts.FAULT_SIGNAL_STALE: "stale signal",
     contracts.FAULT_CELL_IMBALANCE: "cell imbalance",
+    contracts.FAULT_LINK_INTEGRITY: "duplicate/reordered",
 }
 PACK_REASONS.update({HEARTBEAT_FAULTS[c]: reason for c, reason in HEARTBEAT_LOST_REASON.items()})
 THERMAL_FAULTS = (contracts.FAULT_OVER_TEMP_WARNING, contracts.FAULT_OVER_TEMP_CRITICAL,
@@ -74,17 +86,26 @@ THERMAL_FAULTS = (contracts.FAULT_OVER_TEMP_WARNING, contracts.FAULT_OVER_TEMP_C
 
 
 class CellMonitor:
-    """One cell sensor: last value, when it last arrived and when it last changed."""
+    """One cell sensor: last value, when it last arrived, when it last changed, when it last jumped implausibly."""
 
     def __init__(self):
         self.value: Optional[float] = None
         self.last_rx = 0.0
         self.last_change = 0.0
+        self.rate_bad_at: Optional[float] = None
 
     def feed(self, now: float, value: float) -> None:
         if value != self.value:
+            # rate since the last change (not the last sample): a frozen sensor catching up is no jump;
+            # out-of-range readings have their own fault
+            if self.value is not None and MIN_C <= self.value <= MAX_C and MIN_C <= value <= MAX_C:
+                if abs(value - self.value) / max(now - self.last_change, RATE_MIN_DT_S) > MAX_RATE_C_PER_S:
+                    self.rate_bad_at = now
             self.last_change = now
         self.value, self.last_rx = value, now
+
+    def rate_implausible(self, now: float) -> bool:
+        return self.rate_bad_at is not None and now - self.rate_bad_at < RATE_HOLD_S
 
     def fault(self, now: float, stream_start: float) -> Optional[str]:
         """Fault kind (contracts.CELL_FAULT_KINDS) or None. A cell that never arrived is stale after STALE_S."""
@@ -115,6 +136,20 @@ class Guardian:
         self.imbalance_since: Optional[float] = None
         self.cell_faults: Dict[int, Optional[str]] = {}
         self.faults: Dict[str, Optional[int]] = {}   # active DFM fault code -> cell (None for pack faults)
+        self.last_seq: Optional[int] = None
+        self.link_anomalies: List[float] = []        # times of discarded (duplicated / reordered) cell messages
+
+    def check_seq(self, now, seq: int) -> Optional[str]:
+        """"duplicate" / "reordered" for a cell message to discard, None to accept it (and remember its seq)."""
+        if self.last_seq is not None and seq <= self.last_seq and self.last_seq - seq <= SEQ_RESTART_GAP:
+            self.link_anomalies.append(now)
+            return "duplicate" if seq == self.last_seq else "reordered"
+        self.last_seq = seq
+        return None
+
+    def link_degraded(self, now) -> bool:
+        self.link_anomalies = [t for t in self.link_anomalies if now - t < LINK_WINDOW_S]
+        return len(self.link_anomalies) >= LINK_ANOMALIES
 
     def feed_heartbeat(self, now, component: str, status: str = HB_OK) -> None:
         if self.heartbeats is not None:
@@ -193,6 +228,10 @@ class Guardian:
             return {**self.faults, contracts.FAULT_SIGNAL_STALE: None}
         active: Dict[str, Optional[int]] = {
             contracts.cell_fault(c, kind): c for c, kind in self.cell_faults.items() if kind}
+        active.update({contracts.cell_fault(c, "rate_implausible"): c
+                       for c, m in self.cells.items() if m.rate_implausible(now)})
+        if self.link_degraded(now):
+            active[contracts.FAULT_LINK_INTEGRITY] = None
         if not valid:
             active.update({c: cell for c, cell in self.faults.items() if c in THERMAL_FAULTS})
             self.imbalance_since = None
@@ -372,8 +411,13 @@ def loop(samples, log, display=None, faults_out=None, states_out=None):
         if isinstance(trigger, HeartbeatSample):
             g.feed_heartbeat(now, trigger.component, trigger.status)
         elif trigger is not None:
-            last = trigger
-            cells = last.cells
+            anomaly = g.check_seq(now, trigger.seq)
+            if anomaly:   # duplicated / reordered on the link: dropped before it can move the state
+                log.log(f"seq_{anomaly}", seq=trigger.seq, last_seq=g.last_seq, msg_id=trigger.msg_id,
+                        run_id=trigger.run_id)
+            else:
+                last = trigger
+                cells = last.cells
         before, faults_before = g.state, g.faults
         state, reason = g.update(now, cells)
         fields = dict(reason=reason, temp_c=None if g.temp is None else round(g.temp, 2), cell=g.hottest,

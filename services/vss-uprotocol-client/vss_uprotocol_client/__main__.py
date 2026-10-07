@@ -80,7 +80,7 @@ def main():
     max_path = vss_source_path()
     ttl_ms = config.thresholds().stale_ms
     transport = make_transport(uris.publisher_uri())
-    faults = TransportFaults() if fault_api_port() > 0 else None
+    faults = TransportFaults(log=log) if fault_api_port() > 0 else None
     cells_publisher = SignalPublisher(transport.send_sync, uris.battery_cells_topic(), ttl_ms, log=log,
                                       interceptors=[faults] if faults else [])
     max_publisher = SignalPublisher(transport.send_sync, uris.battery_temp_topic(), ttl_ms, log=log)
