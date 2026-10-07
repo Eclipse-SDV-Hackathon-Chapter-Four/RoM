@@ -71,7 +71,7 @@ def create_app(store, safety_case_text: str, healthy: Callable[[], dict] = lambd
 
     @app.get("/ui/", response_class=HTMLResponse)
     def ui(run_id: Optional[str] = None):
-        return report.report_html(store.records(run_id), "RoM evidence", link=lambda rid: f"/ui/{rid}")
+        return report.report_html(store.records(run_id), "RoM evidence", link=lambda rid: rid)   # relative, so it also works behind the dashboard proxy
 
     @app.get("/ui/{record_id}", response_class=HTMLResponse)
     def ui_record(record_id: str):

@@ -450,6 +450,8 @@ strong.state-mitigating, strong.state-fault { color: var(--fg); background: none
 
 /* ---------- safety evidence ---------- */
 .evidence-view { display: flex; flex-direction: column; gap: 10px; padding: 12px 24px 16px; flex: 1; min-height: 0; }
+.evidence-mode { margin: 0 0 4px; align-self: flex-start; }
+.view-tab { cursor: pointer; font: inherit; background: none; border: 0; }
 .evidence-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 22px; padding: 8px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--card-border); font-size: 14px; color: #c3cfe2; }
 .evidence-strip strong { color: var(--text); font-weight: 600; }
 .evidence-title { font-size: 16px; font-weight: 600; color: var(--text); }

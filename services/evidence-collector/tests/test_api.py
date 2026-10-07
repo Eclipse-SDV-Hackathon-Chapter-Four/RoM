@@ -65,7 +65,7 @@ def test_bundle_has_only_the_referenced_lines_and_valid_checksums(client):
 
 def test_html_pages(client):
     page = client.get("/ui/")
-    assert page.status_code == 200 and 'href="/ui/r1@1"' in page.text and "Coverage by safety goal" in page.text
+    assert page.status_code == 200 and 'href="r1@1"' in page.text and "Coverage by safety goal" in page.text
     assert "r2@2" in client.get("/ui/r2@2").text and client.get("/ui/nope").status_code == 404
 
 
