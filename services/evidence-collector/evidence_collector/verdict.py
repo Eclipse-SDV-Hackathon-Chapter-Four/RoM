@@ -9,7 +9,8 @@ Pure: no network, no clock, no files. Everything the rules need is in Observed (
     expected state never reached in time (WARNING / CRITICAL /           FAIL
       SENSOR_FAULT / MITIGATING), or left (MONITORING / CLEAR)
     CRITICAL expected but cooling never requested (no MITIGATING)        FAIL
-    a fault raised that the campaign does not expect (false alarm)       FAIL
+    a fault raised that the campaign neither expects nor tolerates       FAIL
+      (false alarm)
     expected fault not in OpenSOVD, not confirmed, or from another run   FAIL
     campaign not in the safety case, or its hazard / goal do not match   INCONCLUSIVE ("proves no requirement")
     another campaign ran at the same time                                INCONCLUSIVE, even over a FAIL (the
@@ -89,6 +90,7 @@ def judge(obs: Observed) -> Judgement:
     t0 = min(i["ts_ms"] for i in obs.injected)
     limit = int(obs.start.get("max_detect_ms") or 0)
     expected_faults = list(obs.start.get("expected_faults") or [])
+    tolerated = set(obs.start.get("tolerated_faults") or [])
     expected_state = obs.start.get("expected_state")
     if obs.state_at_injection not in HEALTHY_AT_INJECTION:
         reasons.inconclusive(f"guardian was {obs.state_at_injection or 'unknown'} when the first fault was injected, "
@@ -140,7 +142,8 @@ def judge(obs: Observed) -> Judgement:
 
     unexpected, seen = [], set()
     for f in obs.faults:
-        if f["stage"] == "FAILED" and f["code"] not in expected_faults and f["code"] not in seen:
+        if f["stage"] == "FAILED" and f["code"] not in expected_faults and f["code"] not in tolerated \
+                and f["code"] not in seen:
             seen.add(f["code"])
             unexpected.append({"code": f["code"], "at": f["ts_ms"], "reason": f.get("reason"), "msg_id": f.get("msg_id")})
             reasons.fail(f"unexpected fault {f['code']} ({f.get('reason')}): false alarm or missing from expected_faults")
