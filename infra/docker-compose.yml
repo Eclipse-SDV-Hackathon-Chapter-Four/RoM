@@ -1,6 +1,6 @@
 # Made with Claude (Claude Code, Anthropic)
 # Everything in one place. rom-python = dev image (all packages editable, repo bind-mounted);
-# vss-uprotocol-client, guardian and the TODO services use their own images (services/*/Dockerfile).
+# vss-uprotocol-client, guardian, fault-injector and the TODO services use their own images (services/*/Dockerfile).
 # Shortcuts: `make up`, `make kuksa` (interactive shell), `make down`, `make help`. Raw commands:
 #   docker compose -f infra/docker-compose.yml up -d databroker mosquitto   # brokers
 #   docker compose -f infra/docker-compose.yml run --rm kuksa-client         # kuksa-client shell
@@ -17,7 +17,9 @@ services:
 
   databroker:
     image: ghcr.io/eclipse-kuksa/kuksa-databroker:${KUKSA_VERSION:-latest}
-    command: --insecure
+    # default VSS (inside the image) + the RoM overlay with the 4 battery cells (infra/vss/rom_cells.json)
+    command: --insecure --vss vss_release_6.0.json,/vss/rom_cells.json
+    volumes: ["./vss:/vss:ro,z"]
     ports: ["55555:55555"]
 
   kuksa-client:
@@ -45,6 +47,9 @@ services:
       KUKSA_HOST: databroker
       SIM_HZ: ${SIM_HZ:-2}
       SIM_PERIOD_S: ${SIM_PERIOD_S:-120}
+      SIM_API_HOST: 0.0.0.0            # fault API for the fault-injector (and curl); no authentication
+      SIM_API_PORT: 8080
+    ports: ["127.0.0.1:8080:8080"]     # loopback only: keep the unauthenticated fault API off the network
     depends_on: [databroker]
 
   adapter:
@@ -69,6 +74,9 @@ services:
     environment:
       KUKSA_HOST: databroker
       ZENOH_LISTEN: tcp/0.0.0.0:7447   # guardian connects here; no multicast needed between containers
+      FAULT_API_HOST: 0.0.0.0          # transport-fault API (drop, delay, ...) for the fault-injector; no authentication
+      FAULT_API_PORT: 8081
+    ports: ["127.0.0.1:8081:8081"]     # loopback only
     depends_on: [databroker]
 
   guardian:
@@ -92,12 +100,15 @@ services:
       SOVD_DFM_APPS: battery_guardian  # DFM entity path = fault catalog id
     depends_on: [dfm]
 
-  # --- TODO placeholders: images build and start, log "not_implemented" and exit ---
   fault-injector:
-    profiles: ["todo"]
+    profiles: ["tools"]          # one-shot: `make campaign C=thermal_runaway` (stack from `make guardian` must be up)
     build: {context: .., dockerfile: services/fault-injector/Dockerfile}
     image: localhost/rom/fault-injector:dev
+    environment:
+      SIMULATOR_URL: http://simulator:8080
+      PUBLISHER_URL: http://vss-uprotocol-client:8081
 
+  # --- TODO placeholders: images build and start, log "not_implemented" and exit ---
   dfm:
     profiles: ["todo"]
     build: {context: .., dockerfile: services/dfm/Dockerfile}

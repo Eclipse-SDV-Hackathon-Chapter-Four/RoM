@@ -1,0 +1,11 @@
+# Made with Claude (Claude Code, Anthropic)
+# KUKSA stops receiving values (all four cells) for a while.
+run_id: source-dropout-01
+seed: 7
+hazard: "H4: loss of the temperature source"
+safety_goal: "SG4: a silent signal is a sensor fault after 2 s"
+expected_state: SENSOR_FAULT
+max_detect_ms: 4000             # guardian STALE_MS = 2 s
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 8, target: simulator, type: dropout}
