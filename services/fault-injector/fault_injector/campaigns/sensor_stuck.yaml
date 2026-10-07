@@ -1,0 +1,12 @@
+# Made with Claude (Claude Code, Anthropic)
+# All four cell sensors freeze (a stuck sensor bus): a flat line must not be trusted as "all fine".
+# (Freezing only cell 1 would not work: once another cell rises past the frozen value, Max moves again.)
+run_id: sensor-stuck-01
+seed: 7
+hazard: "H2: frozen temperature sensor hides a developing fault"
+safety_goal: "SG2: detect a stuck signal within 10 s and treat it as a sensor fault"
+expected_state: SENSOR_FAULT
+max_detect_ms: 12000            # guardian STUCK_S = 10 s
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 20, target: simulator, type: stuck}
