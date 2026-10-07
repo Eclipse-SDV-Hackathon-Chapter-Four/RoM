@@ -32,4 +32,8 @@ Image: `services/guardian/Dockerfile` → `localhost/rom/guardian:dev` (env-only
 | `MQTT_HOST`, `MQTT_PORT` | `localhost`, `1883` |
 | `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_*` | see `libs/rom-uprotocol` |
 
+`WARN_C` / `CRIT_C` are conservative supervisory demo defaults, not regulatory or universal thermal-runaway
+thresholds: production values are manufacturer, cell and pack specific. Override them via the environment
+(`rom_common.config.thresholds()` uses the same defaults).
+
 Test: `pytest services/guardian`

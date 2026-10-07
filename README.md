@@ -73,6 +73,10 @@ pytest -q
 | `VSS_SOURCE_PATH` | `Vehicle.Powertrain.TractionBattery.Temperature.Max` | vss-uprotocol-client |
 | `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_MODE`, `ZENOH_CONNECT`, `ZENOH_LISTEN` | `rom-vehicle`, `zenoh`, `peer`, –, – | vss-uprotocol-client, guardian |
 
+`WARN_C` / `CRIT_C` (38 / 45 °C) are conservative supervisory demo defaults for thermal management, not
+regulatory or universal thermal-runaway thresholds. Production values are manufacturer, cell and pack specific;
+override them with the environment variables above (the same defaults apply in `rom_common.config.thresholds()`).
+
 ## Guardian states
 
 `CLEAR` (no data yet) → `MONITORING` → `WARNING` (≥ `WARN_C`) → `CRITICAL` (≥ `CRIT_C`) → `MITIGATING`

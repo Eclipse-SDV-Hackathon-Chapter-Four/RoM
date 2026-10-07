@@ -28,7 +28,7 @@ def test_display_cmd_roundtrip_and_unknown_state():
 
 def test_threshold_defaults_and_env_override(monkeypatch):
     t = config.thresholds()
-    assert (t.warn_c, t.crit_c, t.hyst_c, t.stale_ms) == (45.0, 55.0, 2.0, 2000)
+    assert (t.warn_c, t.crit_c, t.hyst_c, t.stale_ms) == (38.0, 45.0, 2.0, 2000)
     monkeypatch.setenv("WARN_C", "40")
     assert config.thresholds().warn_c == 40.0
 
