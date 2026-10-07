@@ -393,7 +393,7 @@ flowchart LR
 - [x] Verdict per run: PASS / FAIL / INCONCLUSIVE, with detection latency and mitigation timing
 - [x] Report covering all campaigns, failed scenarios included (`/ui/`, ZIP bundle with SHA-256 manifest)
 - [x] Dashboard: live monitoring, start / stop campaigns, safety evidence view ([`services/dashboard`](services/dashboard/README.md))
-- [x] Final run under Ankaios, all 22 campaigns: 20 PASS, 1 expected FAIL (`opensovd_partial_visibility`), 1 open (`transport_delay`, [#29](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/29))
+- [x] Final run under Ankaios, all 22 campaigns: 20 PASS, 1 expected FAIL (`opensovd_partial_visibility`); `transport_delay` fixed after it (`tolerated_faults`, [#29](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/29)) and PASS on rerun
 
 #### 6. Orchestration & platform
 - [x] Eclipse Ankaios manages the final orchestrated run (`make final-run`, [`infra/ankaios`](infra/ankaios/README.md))
