@@ -7,7 +7,7 @@ DC = $(DC_BIN) -f infra/docker-compose.yml
 VENV = .venv
 PY = $(VENV)/bin/python
 
-.PHONY: help up down logs kuksa sim sim-up guardian adapter hw images venv sim-local test-local shell test
+.PHONY: help up down logs kuksa sim sim-up guardian campaign campaigns adapter hw images venv sim-local test-local shell test
 
 help:   ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -41,6 +41,13 @@ hw:     ## hardware run: AZ3166 -> mosquitto -> adapter -> databroker -> vss-upr
 	$(DC) --profile tools stop simulator
 	$(DC) --profile tools up -d --build databroker mosquitto adapter vss-uprotocol-client guardian
 	$(DC) --profile tools logs -f adapter guardian
+
+campaigns: ## list the bundled fault campaigns
+	$(DC) --profile tools run --rm fault-injector rom-fault-injector list
+
+campaign: ## run a fault campaign against the running stack: make campaign C=thermal_runaway (after `make guardian`)
+	@test -n "$(C)" || { echo "usage: make campaign C=<name>   (make campaigns lists them)"; exit 2; }
+	$(DC) --profile tools run --rm fault-injector rom-fault-injector run $(C)
 
 images: ## build the service images localhost/rom/<service>:dev (ready for podman / Ankaios)
 	$(DC) --profile tools --profile todo build vss-uprotocol-client guardian fault-injector dfm opensovd evidence-collector

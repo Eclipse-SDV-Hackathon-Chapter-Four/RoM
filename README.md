@@ -15,9 +15,9 @@ Every component is its own pip package; services that run under Ankaios have the
 | `libs/rom-uprotocol` | `rom_uprotocol` | – | uProtocol library: Zenoh transport, URIs, publisher, subscriber |
 | `services/vss-uprotocol-client` | `vss_uprotocol_client` | ✅ | KUKSA Databroker → uProtocol |
 | `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (uProtocol input; display command out over MQTT) |
-| `services/simulator` | `simulator` | dev image | sine-wave temperature into KUKSA |
+| `services/simulator` | `simulator` | dev image | 4-cell sine-wave temperature into KUKSA, with HTTP fault injection |
 | `services/adapter` | `adapter` | dev image (`make hw`) | MQTT → KUKSA |
-| `services/fault-injector` | `fault_injector` | ✅ TODO | Fault Campaign Runner |
+| `services/fault-injector` | `fault_injector` | ✅ | Fault Campaign Runner: YAML campaigns → simulator / publisher fault APIs |
 | `services/dfm` | `dfm` | ✅ TODO | Diagnostic Fault Manager |
 | `services/opensovd` | – | ✅ TODO | Eclipse OpenSOVD server |
 | `services/evidence-collector` | `evidence_collector` | ✅ TODO | Evidence Collector → verdicts |
@@ -44,6 +44,8 @@ make down                        # stop everything
 | `make hw` | hardware run: AZ3166 → mosquitto → adapter → databroker → vss-uprotocol-client → guardian (no simulator), follow adapter + guardian logs |
 | `make adapter` | MQTT → KUKSA adapter in the foreground |
 | `make sim` | sine-wave simulator into KUKSA (foreground) |
+| `make campaigns` | list the bundled fault campaigns |
+| `make campaign C=thermal_runaway` | run a fault campaign against the running stack (`make guardian` first) |
 | `make sim-up` | databroker + simulator in the background |
 | `make kuksa` | interactive kuksa-client shell (`getValue Vehicle.Powertrain.TractionBattery.Temperature.Max`) |
 | `make logs` | follow databroker, mosquitto and simulator logs |
@@ -70,11 +72,39 @@ pytest -q
 |---|---|---|
 | `KUKSA_HOST` / `KUKSA_PORT` | `127.0.0.1` / `55555` | all |
 | `MQTT_HOST` / `MQTT_PORT` | `localhost` / `1883` | all |
-| `SIM_HZ`, `SIM_PERIOD_S`, `SIM_MIN_C`, `SIM_MAX_C` | `2`, `120`, `30`, `69` | simulator |
+| `SIM_HZ`, `SIM_PERIOD_S`, `SIM_MIN_C`, `SIM_MAX_C`, `SIM_SEED` | `2`, `120`, `30`, `69`, `0` | simulator |
+| `SIM_API_HOST` / `SIM_API_PORT` | `127.0.0.1` / `8080` | simulator fault API (`0` = off) |
+| `FAULT_API_HOST` / `FAULT_API_PORT` | `127.0.0.1` / unset (off) | vss-uprotocol-client transport-fault API |
+| `SIMULATOR_URL` / `PUBLISHER_URL` | `http://127.0.0.1:8080` / – | fault-injector |
 | `WARN_C`, `CRIT_C` | `38`, `45` | guardian |
 | `STALE_MS`, `STUCK_S`, `MIN_PLAUSIBLE_C`, `MAX_PLAUSIBLE_C` | `2000`, `10`, `-40`, `150` | guardian (`STALE_MS` is also the uProtocol TTL) |
 | `VSS_SOURCE_PATH` | `Vehicle.Powertrain.TractionBattery.Temperature.Max` | vss-uprotocol-client |
 | `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_MODE`, `ZENOH_CONNECT`, `ZENOH_LISTEN` | `rom-vehicle`, `zenoh`, `peer`, –, – | vss-uprotocol-client, guardian |
+
+## Fault injection
+
+The simulator writes **four battery cells** (`Vehicle.Powertrain.TractionBattery.Cells.Cell1..4.Temperature`, a custom
+overlay in [`infra/vss/rom_cells.json`](infra/vss/rom_cells.json) that the databroker loads next to the standard VSS)
+and `Temperature.Max` = the hottest cell written. The guardian still sees only `Max`.
+
+Faults are injected into the running stack over HTTP, by hand or by the Fault Campaign Runner:
+
+```bash
+make guardian                                   # stack up; fault APIs on 127.0.0.1:8080 (simulator) and :8081 (publisher)
+make campaigns                                  # bundled campaigns
+make campaign C=thermal_runaway                 # run one; watch the guardian state change in the guardian logs
+curl -XPOST localhost:8080/faults -d '{"type":"stuck","cell":1}'      # or by hand
+curl -XDELETE localhost:8080/faults
+```
+
+| Where | Faults | Docs |
+|---|---|---|
+| simulator | signal: stuck · spike · drift · out_of_range, source: dropout · replay_interruption | [`services/simulator`](services/simulator/README.md) |
+| vss-uprotocol-client | transport: drop · reorder · duplicate · delay | [`services/vss-uprotocol-client`](services/vss-uprotocol-client/README.md) |
+| fault-injector | YAML campaigns: hazard, safety goal, faults, expected state, `max_detect_ms`, seed | [`services/fault-injector`](services/fault-injector/README.md) |
+
+The control APIs have **no authentication**; compose publishes them on `127.0.0.1` only. Do not expose them on a
+shared network.
 
 ## Guardian states
 
@@ -209,6 +239,7 @@ flowchart LR
   CANP --> KDB
   KDB --> PUB[VSS uProtocol Publisher]
   FI[Fault Campaign Runner] -->|inject| PUB
+  FI -->|inject| SIM
   PUB -->|uProtocol / Zenoh| G[Battery Thermal Guardian]
   G -->|state · heartbeat · mitigation over uProtocol| DISP[Display / actuator]
   G --> DFM[DFM fault records]
@@ -227,7 +258,9 @@ flowchart LR
 - [x] Eclipse ThreadX firmware on AZ3166 publishing sensor telemetry over MQTT
 - [x] Containerized dev stack, `make` shortcuts, unit tests per component
 - [x] uProtocol extracted into a reusable library (`libs/rom-uprotocol`); every component is its own pip package, services have their own image (ready for Ankaios)
-- [x] Placeholder services with their own images: Fault Campaign Runner, DFM, OpenSOVD, Evidence Collector (build, start, log `not_implemented`)
+- [x] Placeholder services with their own images: DFM, OpenSOVD, Evidence Collector (build, start, log `not_implemented`)
+- [x] Simulator with 4 battery cells (custom VSS overlay) and runtime fault injection over HTTP
+- [x] Fault Campaign Runner: YAML campaigns with a seed, signal / source / transport faults, `run_id` on every log line
 - [x] Guardian logs the uProtocol `msg_id` / `seq` that caused each state change
 - [x] AZ3166 firmware reconnects to the MQTT broker automatically (Last Will `offline`, retained `online`)
 
@@ -239,11 +272,12 @@ flowchart LR
 - [x] Guardian state shown on the device display (display command over MQTT, `G:NO LINK` after 5 s)
 
 #### 2. Fault campaigns
-- [ ] Fault Campaign Runner inside the uProtocol publisher, campaigns described in YAML with a seed (deterministic, replayable)
-- [ ] Transport faults: delay · duplicate · drop · reorder
-- [ ] Signal faults: stuck · spike · drift · out-of-range
-- [ ] Source faults: dropout · replay interruption
-- [ ] Combined multi-fault scenarios
+- [x] Fault Campaign Runner: campaigns described in YAML with a seed (deterministic, replayable); it drives the simulator and the uProtocol publisher over HTTP
+- [x] Transport faults: delay · duplicate · drop · reorder
+- [x] Signal faults: stuck · spike · drift · out-of-range
+- [x] Source faults: dropout · replay interruption
+- [x] Combined multi-fault scenarios (one campaign, more can be added as YAML)
+- [ ] Campaigns for duplicate / reorder once the guardian detects them (Guardian section)
 
 #### 3. Guardian
 - [ ] Publish state, heartbeat, fault and mitigation events over uProtocol

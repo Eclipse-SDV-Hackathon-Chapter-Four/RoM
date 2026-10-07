@@ -43,6 +43,7 @@ Watch the topic from a terminal: `rom-up-monitor` (or `python -m rom_uprotocol.s
 | `uris.py` | `publisher_uri`, `battery_temp_topic`, `guardian_uri` |
 | `transport/` | `make_transport(source)` + `register_transport(name, factory)`; `zenoh.py` = `ZenohTransport` |
 | `publisher.py` | `SignalPublisher` with interceptor chain |
+| `faults.py` | `TransportFaults`: a controllable interceptor (drop, reorder, duplicate, delay) |
 | `subscriber.py` | `UpSignalSource`, `Sample` |
 
 ## Extension points (open for extension, closed for modification)
@@ -50,7 +51,7 @@ Watch the topic from a terminal: `rom-up-monitor` (or `python -m rom_uprotocol.s
 | Need | How |
 |---|---|
 | Another transport (SOME/IP, MQTT, ...) | implement `UTransport`, `register_transport("name", factory)`, set `UP_TRANSPORT=name` |
-| Fault injection on the wire | an interceptor `interceptor(message, forward) -> UStatus` passed to `SignalPublisher(..., interceptors=[...])`: drop (don't call `forward`), duplicate (call it twice), delay, corrupt |
+| Fault injection on the wire | an interceptor `interceptor(message, forward) -> UStatus` passed to `SignalPublisher(..., interceptors=[...])`: drop (don't call `forward`), duplicate (call it twice), delay, corrupt. Ready-made and steerable at runtime: `TransportFaults` (`faults.add("delay", {"ms": 1500}, duration_s=10)`), wired to HTTP in the VSS uProtocol Client |
 | Another signal source | lives in the client (`SignalSource`), the library does not change |
 
 ## uProtocol contract
