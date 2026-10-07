@@ -1,87 +1,170 @@
 <!-- Made with Claude (Claude Code, Anthropic) -->
-# RoM — Battery Thermal Guardian
+# RoM: Battery Thermal Guardian
+
+**Eclipse SDV Hackathon Chapter Four · Doctor Whodunit challenge**
 
 [![CI](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/actions/workflows/ci.yml/badge.svg)](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/actions/workflows/ci.yml)
+![Eclipse KUKSA](https://img.shields.io/badge/Eclipse-KUKSA-2c2255)
+![Eclipse uProtocol](https://img.shields.io/badge/Eclipse-uProtocol-2c2255)
+![Eclipse OpenSOVD](https://img.shields.io/badge/Eclipse-OpenSOVD-2c2255)
+![Eclipse Ankaios](https://img.shields.io/badge/Eclipse-Ankaios-2c2255)
+![Eclipse ThreadX](https://img.shields.io/badge/Eclipse-ThreadX-2c2255)
+![Eclipse Zenoh](https://img.shields.io/badge/Eclipse-Zenoh-2c2255)
 
-Sensor / simulator → KUKSA Databroker → VSS uProtocol Client → (uProtocol over Zenoh) → Guardian → display,
-and Guardian → (uProtocol) → DFM fault records (Eclipse OpenSOVD fault-lib).
-The guardian never reads the databroker directly. Everything runs in Docker; you only need `docker compose` and `make`.
-
-## Demo quick start
+> A battery cell reports 200 °C. **Is it a thermal runaway, a broken sensor, or a broken link?**
+> RoM tells them apart, names the component that failed, records it as a standard diagnostic trouble code (DTC) in
+> Eclipse OpenSOVD, and **proves** every reaction with an automated, reproducible verdict.
 
 ```
-Terminal 1:   make images
-              make guardian            # stays attached to the guardian log; leave it running
-
-Terminal 2:   make dashboard           # run when `curl -s localhost:8082/health` shows "guardian_state":"MONITORING"
-
-Browser:      http://localhost:5173/#/live
-
-Run a scenario:    pick "Thermal Runaway"  ->  Run Scenario   (Stop button ends it early)
-Refresh evidence:  make evidence-snapshot
-Safety report:     http://localhost:5173/#/evidence           (press Rescan after a new snapshot)
-
-Shutdown:     make dashboard-stop
-              make down
+hazard  →  injected fault  →  detection  →  mitigation  →  DTC in OpenSOVD  →  verdict (PASS / FAIL / INCONCLUSIVE)
 ```
 
-### If Meryem is unavailable (tonight's checklist)
+## Highlights
 
-1. `docker ps` works? (if not: Docker is not running, or `sudo usermod -aG docker $USER` and log in again) · `df -h /` has 10 GB+ free?
-2. Stack down? `make guardian` (terminal 1). Wait for `curl -s localhost:8082/health` -> `"guardian_state":"MONITORING"`.
-3. Dashboard down? `make dashboard` (terminal 2), then open `http://localhost:5173/#/live`.
-4. Scenario button does nothing / error: read the red message (`503` = stack not calm, wait 10 s; `409` = one is still running, press Stop).
-   Still broken -> `make campaign C=thermal_runaway` in a terminal; the dashboard still shows the reaction.
-5. Safety Evidence empty or old: `make evidence-snapshot`, then **Rescan**. Still nothing: open `http://localhost:8082/ui/`.
-6. Something unknown: `docker compose -f infra/docker-compose.yml --profile tools ps` and `... logs --tail 50 guardian evidence-collector`.
-7. Reset: `make dashboard-stop && make down`, then start again from step 2. This keeps all saved evidence; never delete evidence to make it look green (a stopped scenario is INCONCLUSIVE on purpose).
-8. After a `git pull`: `make images` first, otherwise the containers are the old ones.
+|  |  |
+|---|---|
+| 🔍 **Whodunit** | Heartbeats along the chain (uProtocol link, KUKSA databroker, producer, chip); the guardian blames the failure closest to it and raises its own DTC (`databroker_down`, `chip_silent`, …) |
+| 🌡️ **4-cell guardian** | `MONITORING → WARNING → CRITICAL → MITIGATING`; a stuck, stale or implausible cell is left out, so a bad sensor never disarms the warning or fakes an overheat |
+| 🩺 **Standard diagnostics** | Fault events → Eclipse fault-lib DFM → Eclipse OpenSOVD (SOVD REST, ISO 17978), with environment data and the uProtocol `msg_id` of the message that caused it |
+| 🧪 **22 fault campaigns** | YAML, seeded, replayable: signal, source, transport, heartbeat and diagnostics faults, each linked to a hazard and safety goal |
+| ✅ **Evidence, not claims** | The Evidence Collector judges every run against the safety case (12 hazards, 9 safety goals, 11 requirements) and writes a checksummed evidence bundle (SHA-256 manifest) |
+| 🚀 **One command** | `make final-run`: Eclipse Ankaios starts the whole stack, runs every campaign and collects the verdicts |
+| 🔌 **Real hardware** | MXChip AZ3166 on Eclipse ThreadX as cell 1, guardian state back on its OLED |
 
-Everything in detail (architecture, file map, every scenario, verdicts, demo script, troubleshooting): [`services/dashboard/README.md`](services/dashboard/README.md).
+## Architecture
 
-## Repository layout
+```mermaid
+flowchart LR
+  HW["AZ3166<br/>Eclipse ThreadX"] -->|MQTT| AD[adapter]
+  SIM[simulator] --> KDB
+  AD --> KDB[("Eclipse KUKSA<br/>Databroker")]
+  KDB --> PUB[VSS uProtocol client]
+  PUB -->|"Eclipse uProtocol<br/>over Zenoh"| G[Battery Thermal Guardian]
+  G -->|"fault events (uProtocol)"| DFM["fault-lib DFM"]
+  DFM -->|iceoryx2| SOVD["Eclipse OpenSOVD<br/>SOVD REST"]
+  G -->|display cmd| HW
+  FI[fault injector] -. inject .-> SIM & PUB & DFM
+  G & FI -->|uProtocol| EV[Evidence Collector]
+  SOVD --> EV
+  EV --> DASH[dashboard]
+  ANK["Eclipse Ankaios"] -. orchestrates .-> KDB & PUB & G & DFM & SOVD & EV
+```
 
-Every component is its own pip package; services that run under Ankaios have their own image
-(`services/<name>/Dockerfile` → `localhost/rom/<name>:dev`, no bind mounts, env-only config).
+The guardian never reads the databroker directly: everything it knows arrives over uProtocol.
 
-| Path | Package | Image | What |
-|---|---|---|---|
-| `libs/rom-common` | `rom_common` | – | contracts, config, JSON logging, KUKSA / MQTT helpers |
-| `libs/rom-uprotocol` | `rom_uprotocol` | – | uProtocol library: Zenoh transport, URIs, publisher, subscriber |
-| `services/vss-uprotocol-client` | `vss_uprotocol_client` | ✅ | KUKSA Databroker → uProtocol |
-| `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (4 cells over uProtocol in, DFM fault events out over uProtocol; display command over MQTT) |
-| `services/simulator` | `simulator` | dev image | 4-cell sine-wave temperature into KUKSA, with HTTP fault injection |
-| `services/adapter` | `adapter` | dev image (`make hw`) | MQTT → KUKSA |
-| `services/fault-injector` | `fault_injector` | ✅ | Fault Campaign Runner: YAML campaigns → simulator / publisher fault APIs |
-| `services/dfm` | `rom_dfm` (Rust) | ✅ | Diagnostic Fault Manager: fault-lib `dfm_bin` + guardian fault events (uProtocol) → fault records |
-| `services/opensovd` | `rom-opensovd` (Rust) | ✅ | Eclipse OpenSOVD server: SOVD entities + DFM faults (`/sovd/v1/apps/battery_guardian/faults`) |
-| `services/evidence-collector` | `evidence_collector` | ✅ | Evidence Collector: every uProtocol topic + OpenSOVD → PASS / FAIL / INCONCLUSIVE per campaign run, safety case, evidence bundle |
-| `MXChip/AZ3166` | – (C firmware) | – | AZ3166 board on Eclipse ThreadX: sensor telemetry over MQTT, guardian state on its OLED |
+### Eclipse SDV projects and where they run
+
+| Project | Used for | Where |
+|---|---|---|
+| **Eclipse KUKSA** Databroker | VSS signal store, 4-cell VSS overlay | [`infra/vss`](infra/vss/rom_overlay.json), [`infra/docker-compose.yml`](infra/docker-compose.yml) |
+| **Eclipse uProtocol** (+ **Eclipse Zenoh**) | every message between components, Python ↔ Rust | [`libs/rom-uprotocol`](libs/rom-uprotocol), [`services/dfm`](services/dfm) |
+| **Eclipse OpenSOVD** (opensovd-core, fault-lib) | DTC storage (`dfm_bin`) and SOVD `faults` API | [`services/dfm`](services/dfm), [`services/opensovd`](services/opensovd) |
+| **Eclipse Ankaios** | orchestrated final run of all services and campaigns | [`infra/ankaios`](infra/ankaios/README.md), [`scripts/final_run.sh`](scripts/final_run.sh) |
+| **Eclipse ThreadX** (+ NetX Duo) | AZ3166 firmware: sensor telemetry, guardian state on the OLED | [`MXChip/AZ3166`](MXChip/AZ3166), [docs](docs/hardware-az3166.md) |
+| **Eclipse Mosquitto** | MQTT between the board and the stack | [`infra/docker-compose.yml`](infra/docker-compose.yml) |
+
+**Upstream:** opensovd-core does not implement the SOVD `faults` resource yet. Ours ([`faults.rs`](services/opensovd/src/faults.rs))
+is offered on [opensovd-core#156](https://github.com/eclipse-opensovd/opensovd-core/issues/156#issuecomment-6044980574).
+
+## Results
+
+Final run under Eclipse Ankaios, all 22 campaigns (`make final-run`):
+
+| | |
+|---|---|
+| Verdicts | **20 PASS**, 1 FAIL **on purpose** (`opensovd_partial_visibility`: a DTC is hidden from OpenSOVD, the collector must catch it), 1 FAIL fixed afterwards and PASS on rerun (`transport_delay`, [#29](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/29)) |
+| Safety goals covered | 9 / 9 |
+| Detection, examples | out-of-range cell **385 ms** · late data rejected **1.7 s** · spike **414 ms** · lost producer heartbeat **1.9 s** · stuck sensor **10.5 s** (by design: `STUCK_S = 10`) |
+| Tests | 340 Python tests + Rust tests, CI on every PR |
 
 ## Quick start
 
+Only Docker and `make` are needed.
+
 ```bash
-make guardian                    # databroker + simulator + vss-uprotocol-client + guardian + dfm + opensovd, shows guardian logs
-SIM_PERIOD_S=30 make guardian    # faster wave (30 s instead of 120 s)
-make down                        # stop everything
+make images && make guardian       # whole stack; follows the guardian log (Ctrl+C detaches, stack keeps running)
+make dashboard                     # second terminal → http://localhost:5173/#/live
+make campaign C=thermal_runaway    # or pick a scenario in the dashboard
+make sovd-faults                   # DTCs from Eclipse OpenSOVD
+make down
 ```
 
-`Ctrl+C` only stops following the logs; the stack keeps running until `make down`.
+| URL | What |
+|---|---|
+| `localhost:5173/#/live` · `#/evidence` | dashboard: live monitoring, run / stop scenarios, safety evidence |
+| `localhost:8082/ui/` | Evidence Collector report |
+| `localhost:7690/sovd/v1/apps/battery_guardian/faults` | OpenSOVD faults |
 
-The compose mosquitto needs host port 1883 (the AZ3166 board publishes there). If a host broker already holds it,
-`make` stops with a hint: `sudo systemctl stop mosquitto`, or `MQTT_HOST_PORT=1884 make guardian` (simulator only).
+Full run under Ankaios (needs podman + Ankaios ≥ 1.0, about 25 min): `make final-run` → `runs/<id>/` with verdicts, summary,
+evidence bundle and logs. Real board: `make hw` ([hardware guide](docs/hardware-az3166.md)).
+Dashboard, demo script and troubleshooting: [`services/dashboard`](services/dashboard/README.md).
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every PR: `make test`, the DFM build with
-`cargo test` and a fixture check against a real `dfm_bin`, all service images, and the AZ3166 ThreadX firmware.
+## How the guardian decides
 
-## Dashboard and demo
+**States:** `CLEAR` → `MONITORING` → `WARNING` (≥ 38 °C) → `CRITICAL` (≥ 45 °C) → `MITIGATING` (cooling requested;
+back to `CRITICAL` "mitigation failed" if still hot after 5 s). `SENSOR_FAULT` when no cell can be trusted or a heartbeat is lost.
 
-The dashboard shows the running stack live (**Live Monitoring**), starts and stops the real fault campaigns from a dropdown
-(**Run Scenario / Stop**, all bundled campaigns, nothing is simulated in the browser) and shows the Evidence Collector's report
-of a saved run (**Safety Evidence**). Only Docker is needed, no Node.js. Commands: [Demo quick start](#demo-quick-start) above,
-everything else in [`services/dashboard/README.md`](services/dashboard/README.md).
+**Per cell:** stale (2 s), stuck (10 s), out of range (−40…150 °C), implausible rate of change, duplicated / reordered
+messages. A bad cell raises its own DTC (`cellN.signal_stuck`, …) and is left out; the other cells keep the pack monitored.
 
-## All commands
+**Whodunit, which part of the chain broke:**
+
+```
+board ─MQTT─▶ adapter ─┐
+                       ├─▶ KUKSA ─▶ vss-uprotocol-client ─uProtocol─▶ guardian
+simulator ─────────────┘
+```
+
+| Heartbeat lost | Guardian says | DTC (`battery_guardian.…`) |
+|---|---|---|
+| `uprotocol` (the link) | `uP link lost` | `uprotocol_lost` |
+| `databroker` (probe of KUKSA) | `KUKSA down` | `databroker_down` |
+| `adapter` / `simulator` (producer) | `adapter down` / `sim down` | `adapter_down` / `simulator_down` |
+| `chip` (board telemetry, MQTT Last Will) | `chip silent` | `chip_silent` |
+
+When several are gone, the one closest to the guardian is blamed: it is the root cause, the rest are consequences.
+Details: [`services/guardian`](services/guardian/README.md), [`docs/diagnostics-4-cells.md`](docs/diagnostics-4-cells.md).
+
+## Fault campaigns
+
+```bash
+make campaigns                     # list
+make campaign C=databroker_down    # run one against the running stack
+curl -XPOST localhost:8080/faults -d '{"type":"stuck","cell":1}'    # or inject by hand
+```
+
+| Injected into | Faults |
+|---|---|
+| simulator (signal / source) | stuck · spike · drift · out_of_range · dropout · replay_interruption · heartbeat_loss |
+| vss-uprotocol-client (transport) | drop · reorder · duplicate · delay · databroker_down |
+| DFM (diagnostics) | write_delay · drop_write |
+
+A campaign names its hazard, safety goal, expected state, expected (and tolerated) DTCs and a detection deadline:
+[`services/fault-injector`](services/fault-injector/README.md). The control APIs have no authentication and listen on
+`127.0.0.1` only.
+
+## Repository layout
+
+| Path | What |
+|---|---|
+| [`libs/rom-common`](libs/rom-common) | contracts, config, JSON logging, KUKSA / MQTT helpers |
+| [`libs/rom-uprotocol`](libs/rom-uprotocol) | uProtocol library: Zenoh transport, URIs, publisher, subscriber |
+| [`services/guardian`](services/guardian) | Battery Thermal Guardian |
+| [`services/vss-uprotocol-client`](services/vss-uprotocol-client) | KUKSA → uProtocol, heartbeats, transport fault API |
+| [`services/simulator`](services/simulator) | 4-cell temperature simulator, signal fault API, cooling actuator |
+| [`services/adapter`](services/adapter) | MQTT → KUKSA for the AZ3166, chip heartbeat |
+| [`services/fault-injector`](services/fault-injector) | Fault Campaign Runner + 22 bundled campaigns |
+| [`services/dfm`](services/dfm) (Rust) | fault events → fault-lib `dfm_bin` |
+| [`services/opensovd`](services/opensovd) (Rust) | Eclipse OpenSOVD server + SOVD `faults` resource |
+| [`services/evidence-collector`](services/evidence-collector) | verdicts, safety case, evidence bundle, report |
+| [`services/dashboard`](services/dashboard) | live dashboard and scenario control |
+| [`MXChip/AZ3166`](MXChip/AZ3166) (C) | Eclipse ThreadX firmware |
+| [`infra`](infra) | compose stack, Ankaios manifest, VSS overlay |
+
+Every component is its own package; every service has its own image (`localhost/rom/<name>:dev`, env-only config).
+
+<details>
+<summary><b>All commands</b></summary>
 
 | Command | What it does |
 |---|---|
@@ -108,20 +191,10 @@ everything else in [`services/dashboard/README.md`](services/dashboard/README.md
 | `make evidence-snapshot` | save the collector's evidence as `runs/<timestamp>/` (gitignored) for the dashboard's Safety Evidence view, bundle verified |
 | `make down` | stop everything |
 
-## Without Docker (local Python)
+</details>
 
-```bash
-make venv && . .venv/bin/activate     # every package installed editable (requirements.txt)
-
-rom-guardian                 # offline test scenario, no broker needed
-rom-simulator                # sine wave into KUKSA (needs the databroker: make up)
-vss-uprotocol-client         # KUKSA -> uProtocol over Zenoh
-rom-guardian --uprotocol     # live, reads uProtocol
-rom-up-monitor               # print every uProtocol message on the battery topic
-pytest -q
-```
-
-## Settings (env variables)
+<details>
+<summary><b>Settings (env variables)</b></summary>
 
 | Variable | Default | Used by |
 |---|---|---|
@@ -145,270 +218,77 @@ pytest -q
 | `REQUIRED_HEARTBEATS` | `uprotocol,databroker` | guardian (`make hw`: `+adapter,chip`) |
 | `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_MODE`, `ZENOH_CONNECT`, `ZENOH_LISTEN` | `rom-vehicle`, `zenoh`, `peer`, –, – | vss-uprotocol-client, guardian |
 
-## Fault injection
+</details>
 
-The simulator writes **four battery cells** (`Vehicle.Powertrain.TractionBattery.Cells.Cell1..4.Temperature`, a custom
-overlay in [`infra/vss/rom_overlay.json`](infra/vss/rom_overlay.json) that the databroker loads next to the standard VSS)
-and `Temperature.Max` = the hottest cell written. The guardian watches **every cell** (uProtocol `…/1001/1/8002`)
-and reports DFM faults per cell on `…/1002/1/8003`; see [`docs/diagnostics-4-cells.md`](docs/diagnostics-4-cells.md).
-
-Faults are injected into the running stack over HTTP, by hand or by the Fault Campaign Runner:
+<details>
+<summary><b>Without Docker (local Python)</b></summary>
 
 ```bash
-make guardian                                   # stack up; fault APIs on 127.0.0.1:8080 (simulator) and :8081 (publisher)
-make campaigns                                  # bundled campaigns
-make campaign C=thermal_runaway                 # run one; watch the guardian state change in the guardian logs
-make evidence                                   # verdict per run (report: http://localhost:8082/ui/)
-curl -XPOST localhost:8080/faults -d '{"type":"stuck","cell":1}'      # or by hand
-curl -XDELETE localhost:8080/faults
+make venv && . .venv/bin/activate     # every package installed editable (requirements.txt)
+
+rom-guardian                 # offline test scenario, no broker needed
+rom-simulator                # sine wave into KUKSA (needs the databroker: make up)
+vss-uprotocol-client         # KUKSA -> uProtocol over Zenoh
+rom-guardian --uprotocol     # live, reads uProtocol
+rom-up-monitor               # print every uProtocol message on the battery topic
+pytest -q
 ```
 
-| Where | Faults | Docs |
-|---|---|---|
-| simulator | signal: stuck · spike · drift · out_of_range, source: dropout · replay_interruption | [`services/simulator`](services/simulator/README.md) |
-| vss-uprotocol-client | transport: drop · reorder · duplicate · delay | [`services/vss-uprotocol-client`](services/vss-uprotocol-client/README.md) |
-| fault-injector | YAML campaigns: hazard, safety goal, faults, expected state, `max_detect_ms`, seed | [`services/fault-injector`](services/fault-injector/README.md) |
-
-The control APIs have **no authentication**; compose publishes them on `127.0.0.1` only. Do not expose them on a
-shared network.
-
-## Heartbeats: which part of the chain broke
-
-```
-board --MQTT--> adapter ----(Cell1 + Max, Heartbeat.Adapter, Heartbeat.Chip)--+
-simulator ------(Cells, Max, Heartbeat.Simulator, Heartbeat.Chip)-------------+--> KUKSA
-                                                                                  |
-  vss-uprotocol-client: cells (8002), Max (8001); heartbeats (8004): the producers' counters, plus its own
-  "uprotocol" beat and "databroker" ok/down from a probe of KUKSA               |
-                                                                                  v
-                                                              guardian (uProtocol only) --> display over MQTT
-```
-
-| Heartbeat | From | Guardian says when it is gone | DFM code (`battery_guardian.…`) |
-|---|---|---|---|
-| `uprotocol` | vss-uprotocol-client | `uP link lost` | `uprotocol_lost` |
-| `databroker` | the client's probe of KUKSA | `KUKSA down` | `databroker_down` |
-| `adapter` / `simulator` | the producer | `adapter down` / `sim down` | `adapter_down` / `simulator_down` |
-| `chip` | the adapter: a counter while the board's telemetry arrives, `0` when it stops (or the simulator) | `chip silent` | `chip_silent` |
-
-All of these are `SENSOR_FAULT` with a short reason (the display contract and the firmware are unchanged). When several are
-gone the one closest to the guardian is blamed first (uprotocol > databroker > producer > chip) and gets the only new DFM
-code. Details: [`services/guardian`](services/guardian/README.md), [`services/adapter`](services/adapter/README.md).
-
-**Real board:** the AZ3166 is **cell 1** (`ADAPTER_CELL`). `make hw` runs the simulator for cells 2-4, so the pack still
-has four cells. No firmware change was needed: the adapter derives the chip heartbeat from the board's telemetry and its
-`rom/sensor/battery/status` (Last Will). A heartbeat from the firmware itself is a possible follow-up.
-
-## Guardian states
-
-`CLEAR` (no data yet) → `MONITORING` → `WARNING` (≥ `WARN_C`) → `CRITICAL` (≥ `CRIT_C`) → `MITIGATING`
-(→ `CRITICAL` "mitigation failed" if still hot after 5 s). Every cell is checked on its own (stale 2 s, stuck 10 s, out of
-range −40…150 °C); a bad cell raises its own DFM code and is left out, so a faulty sensor never disarms the warning.
-`SENSOR_FAULT` when no cell can be trusted, or when a heartbeat is lost (see above).
-
-## AZ3166 hardware node: sensor telemetry over MQTT
-
-This section covers the working hardware node built on the **MXChip AZ3166 IoT DevKit**, running **Eclipse ThreadX / NetX Duo**. The board reads its onboard sensors, shows them on its OLED screen, and publishes them to an MQTT broker so any laptop on the hackathon network can pull live readings without touching the hardware.
-
-Code lives under [`MXChip/AZ3166`](MXChip/AZ3166) and is based on [eclipse-threadx/samplex](https://github.com/eclipse-threadx/samplex). See [`MXChip/AZ3166/README.md`](MXChip/AZ3166/README.md) for the original toolchain/cloning instructions (ARM GCC, CMake, Ninja, submodules).
-
-### What's in `MXChip/AZ3166`
-
-- **`starter` app** — connects to Wi-Fi, reads the four onboard sensors (temperature/humidity, pressure, accelerometer, magnetometer) every 2 seconds, prints them over the serial console (115200 baud) and renders them in a small 6x8 font on the OLED screen.
-- **`mqtt` app** — same sensors, but it follows the RoM sensor contract (`libs/rom-common/rom_common/contracts.py`): every 500 ms it publishes a JSON message with the temperature on `rom/sensor/battery/temp` (QoS 0), and it keeps `rom/sensor/battery/status` (`online` / `offline`, QoS 1, retained; `offline` is the MQTT Last Will) up to date. Publishing anything to the board's `ThreadXAZ3166/incoming` topic still triggers an immediate extra message. This is the one running for the hackathon demo.
-  - **Guardian state on the OLED:** it subscribes to `rom/actuator/display/cmd` (QoS 1, retained; published by `services/guardian`) and shows state, `temp_c` and reason on the lower three lines. Invalid commands are ignored, and with no command for 5 seconds it shows `G:NO LINK`.
-  - **Reconnects by itself:** if the broker goes away the board keeps retrying (1, 2, 4, 8, then every 10 s), and on reconnect it restores the Last Will, publishes `online` again and re-subscribes, so telemetry and the display resume without a reset.
-- Two small fixes worth knowing about if you touch this code:
-  - `ssd1306_conf.h`: enabled the `Font_6x8` tiny font (it ships disabled) so four sensor lines fit on the 128x64 OLED at once.
-  - Standard `printf`/`snprintf` on this target are built without float support (newlib-nano). Any `%f` formatting must go through nanoprintf's own `npf_snprintf` (`#include "nanoprintf.h"`) instead — see `app/starter/main.c` and `app/mqtt/telemetry.c`.
-
-### Building and flashing
-
-```bash
-cd MXChip/AZ3166
-git submodule update --init   # fetches threadx + netxduo if you haven't already
-bash scripts/build.sh starter   # or: bash scripts/build.sh mqtt
-```
-
-Wi-Fi credentials are never committed. For the `mqtt` app, create a git-ignored `MXChip/AZ3166/app/mqtt/cloud_config_local.h` next to `cloud_config.h` with your own values:
-
-```c
-#define WIFI_SSID     "your-ssid"
-#define WIFI_PASSWORD "your-password"
-```
-
-Also set the IP of your broker (`MQTT_LOCAL_BROKER_IP`) in `cloud_config.h` (use your laptop's LAN IP; do not commit environment-specific values). For the `starter` app, fill in `app/starter/cloud_config.h` locally and do not commit it.
-
-The ThreadX / NetX Duo submodules are pinned to known-working revisions (newer 6.5.x-era revisions fail DHCP with this WICED stack). Do not update them.
-
-Flashing is drag-and-drop: the board mounts as a USB mass storage drive. Copy the built binary onto it:
-
-```bash
-cp build/app/mxchip_threadx.bin /media/<you>/AZ3166/
-```
-
-The board resets and runs the new firmware automatically. Note: after a flash, the drive sometimes remounts read-only (the host sees the mid-flash USB disconnect as an I/O error). Remount it before copying again:
-
-```bash
-udisksctl unmount -b /dev/sda && udisksctl mount -b /dev/sda
-```
-
-Serial console (boot log, sensor prints): `/dev/ttyACM0` (or the equivalent serial port on your OS) at 115200 baud, e.g. `screen /dev/ttyACM0 115200`.
-
-### Setting up the MQTT broker
-
-Any Mosquitto broker on the hackathon LAN works. Example on Linux:
-
-```bash
-sudo tee /etc/mosquitto/conf.d/hackathon.conf > /dev/null <<'CONF'
-listener 1883 0.0.0.0
-allow_anonymous true
-CONF
-sudo systemctl restart mosquitto
-```
-
-This opens the broker to every device on the network with no authentication — fine for a short-lived hackathon LAN, not for anything you'd leave running afterwards.
-
-### Pulling sensor data from your own laptop
-
-Once the `mqtt` app is flashed and connected, anyone on the same Wi-Fi can read live sensor data — no cables, no pairing.
-
-**Connection details** (adjust the host to whatever the broker's actual LAN IP is):
-
-| | |
-|---|---|
-| Broker host | `<broker-lan-ip>` |
-| Port | `1883` (no auth) |
-| Sensor topic | `rom/sensor/battery/temp` (QoS 0) |
-| Status topic | `rom/sensor/battery/status` (QoS 1, retained: `online` / `offline`) |
-| Request topic | `ThreadXAZ3166/incoming` (optional, on demand) |
-
-**1. Install an MQTT client**
-
-| OS | Command |
-|---|---|
-| macOS | `brew install mosquitto` |
-| Linux / WSL | `sudo apt install mosquitto-clients` |
-| Windows | `winget install EclipseMosquitto` |
-
-**2. Watch the live feed** — prints a new message every 500 ms:
-
-```bash
-mosquitto_sub -h <broker-lan-ip> -t "rom/sensor/battery/#" -v
-```
-
-Example output:
-
-```
-rom/sensor/battery/status online
-rom/sensor/battery/temp {"device_id":"az3166-01","seq":64,"ts_ms":1791305613274,"temp_c":28.75}
-rom/sensor/battery/temp {"device_id":"az3166-01","seq":65,"ts_ms":1791305613794,"temp_c":28.75}
-```
-
-`seq` starts at 1 after every boot; `ts_ms` is epoch milliseconds once the board has synced time over SNTP (uptime milliseconds before that, which the adapter treats as "no latency info"); `temp_c` is the board's onboard temperature sensor, standing in for the battery temperature. If the board drops off the network the broker publishes the retained `offline` status within about 15 seconds.
-
-**3. Ask for an extra message on demand** — publish anything to the request topic and the board sends one more message immediately, instead of waiting for the next 500 ms tick:
-
-```bash
-mosquitto_pub -h <broker-lan-ip> -t "ThreadXAZ3166/incoming" -m "get"
-```
-
-**4. Prefer a GUI?** Install [MQTT Explorer](https://mqtt-explorer.com), add a connection with the broker host above, port `1883`, no credentials, then expand the `rom/sensor/battery` topic tree. Readings update live as a tree view — no commands needed.
-
-**If nothing comes through:** confirm you're on the same Wi-Fi as the broker (both the 2.4GHz and 5GHz bands of the same AP usually reach it) and that the host IP above is still current — if the broker runs on someone's laptop, a DHCP lease change will move it.
+</details>
 
 ## Roadmap
 
-**Idea:** a portable *Safety Evidence Factory* around the Battery Thermal Guardian. Every injected fault
-must leave a traceable trail: **hazard → safety goal → injected fault → detection → mitigation → verdict**.
+**1. Sources**
+- [x] KUKSA Databroker + 4-cell simulator with runtime fault injection
+- [x] AZ3166 on Eclipse ThreadX end to end: telemetry in, guardian state on the OLED, automatic MQTT reconnect
+- [ ] KUKSA CAN Provider with `.asc` replay ([#22](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/22))
 
-### Target architecture
+**2. Guardian**
+- [x] State machine per cell, consumes VSS **only over uProtocol**
+- [x] Heartbeats for link, databroker, producer and chip; names the failing component
+- [x] Duplicate / reorder detection, implausible rate of change
+- [x] Correlation ids (`run_id`, uProtocol `msg_id`) from sender to DTC to verdict
+- [ ] The guardian's own outgoing heartbeat ([#23](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/23))
 
-```mermaid
-flowchart LR
-  HW[AZ3166 + Eclipse ThreadX] -->|MQTT| AD[MQTT→KUKSA adapter]
-  ASC[CAN .asc replay] --> CANP[KUKSA CAN Provider]
-  SIM[Simulator] --> KDB
-  AD --> KDB[(KUKSA Databroker)]
-  CANP --> KDB
-  KDB --> PUB[VSS uProtocol Publisher]
-  FI[Fault Campaign Runner] -->|inject| PUB
-  FI -->|inject| SIM
-  PUB -->|uProtocol / Zenoh| G[Battery Thermal Guardian]
-  G -->|state · heartbeat · mitigation over uProtocol| DISP[Display / actuator]
-  G --> DFM[DFM fault records]
-  DFM --> SOVD[Eclipse OpenSOVD]
-  SOVD --> EV[Evidence Collector → verdict report]
-  ANK[Eclipse Ankaios on AutoSD] -. orchestrates .-> PUB & G & SOVD & EV
-```
+**3. Diagnostics**
+- [x] Fault events over uProtocol → fault-lib DFM (Python ↔ Rust)
+- [x] SOVD `faults` resource on Eclipse OpenSOVD
+- [x] Diagnostics faults: delayed DFM write, partial OpenSOVD visibility
 
-### Done
+**4. Fault campaigns & evidence**
+- [x] 22 seeded YAML campaigns: signal, source, transport, heartbeat, diagnostics, combined
+- [x] Safety case (hazard → goal → requirement → campaign), checked against every campaign
+- [x] PASS / FAIL / INCONCLUSIVE per run with detection and mitigation timing; report + SHA-256 bundle
+- [x] Dashboard: live monitoring, run / stop scenarios, safety evidence
 
-- [x] KUKSA Databroker + simulator as the nominal signal source
-- [x] VSS uProtocol Publisher (Zenoh transport following the current up-spec)
-- [x] Guardian consumes VSS **only via uProtocol** — never reads the Databroker
-- [x] Guardian state machine: CLEAR → MONITORING → WARNING → CRITICAL → MITIGATING, plus SENSOR_FAULT (stale / stuck / out of range)
-- [x] MQTT → KUKSA adapter with contract validation and sequence-gap detection
-- [x] Eclipse ThreadX firmware on AZ3166 publishing sensor telemetry over MQTT
-- [x] Containerized dev stack, `make` shortcuts, unit tests per component
-- [x] uProtocol extracted into a reusable library (`libs/rom-uprotocol`); every component is its own pip package, services have their own image (ready for Ankaios)
-- [x] DFM, OpenSOVD and Evidence Collector as real services with their own images
-- [x] Simulator with 4 battery cells (custom VSS overlay) and runtime fault injection over HTTP
-- [x] Fault Campaign Runner: YAML campaigns with a seed, signal / source / transport faults, `run_id` on every log line
-- [x] Guardian logs the uProtocol `msg_id` / `seq` that caused each state change
-- [x] AZ3166 firmware reconnects to the MQTT broker automatically (Last Will `offline`, retained `online`)
-
-### Next
-
-#### 1. Sources
-- [x] Bring the ThreadX firmware into `main` and align it with the sensor contract — real hardware end-to-end
-- [ ] KUKSA CAN Provider with `.asc` replay as an additional source ([#22](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/22))
-- [x] Guardian state shown on the device display (display command over MQTT, `G:NO LINK` after 5 s)
-
-#### 2. Fault campaigns
-- [x] Fault Campaign Runner: campaigns described in YAML with a seed (deterministic, replayable); it drives the simulator and the uProtocol publisher over HTTP
-- [x] Transport faults: delay · duplicate · drop · reorder
-- [x] Signal faults: stuck · spike · drift · out-of-range
-- [x] Source faults: dropout · replay interruption
-- [x] Combined multi-fault scenarios (one campaign, more can be added as YAML)
-- [x] Campaigns for duplicate / reorder and a sensor spike (`transport_duplicate`, `transport_reorder`, `sensor_spike_cell2`)
-
-#### 3. Guardian
-- [x] Publish fault events over uProtocol (`up://rom-vehicle/1002/1/8003` → DFM, Python ↔ Rust `up-transport-zenoh`)
-- [x] Heartbeats from the uProtocol link, the KUKSA databroker, the adapter / simulator and the physical chip; the guardian names the failing component (DFM code for the root cause)
-- [x] Publish state and mitigation over uProtocol (`up://rom-vehicle/1002/1/8006`, on every change and every second)
-- [ ] The guardian's own outgoing heartbeat over uProtocol ([#23](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/23))
-- [x] AZ3166 liveness heartbeat without a re-flash: the adapter turns the board's telemetry (1.5 s timeout) and its MQTT Last Will (`offline`) into the `chip` heartbeat; the guardian supervises it (`chip silent` → `SENSOR_FAULT`, DTC `chip_silent`, required in `make hw`), and the board watches the guardian back (`G:NO LINK` after 5 s)
-- [x] Detect duplicate / reordered messages (dropped, `link_integrity`) and implausible rate of change (`cellN.rate_implausible`, the reading is kept)
-- [x] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event: sender (`published`), transport faults (`transport_fault`), guardian, DFM (`fault_msg_id`), OpenSOVD environment data, evidence record
-
-#### 4. Diagnostics
-- [x] DFM fault records for every faulted scenario (fault-lib `dfm_bin`, catalog `battery_guardian`, see `services/dfm`)
-- [x] Expose diagnostics through Eclipse OpenSOVD (`GET /sovd/v1/apps/battery_guardian/faults`, SOVD `faults` resource added on top of opensovd-core, see [`services/opensovd`](services/opensovd/README.md))
-- [x] Diagnostic faults: delayed DFM write · partial OpenSOVD visibility (DFM fault API `write_delay` / `drop_write`, campaigns `dfm_write_delay`, `opensovd_partial_visibility` with `expected_verdict: FAIL`)
-
-#### 5. Evidence & verdicts
-- [x] Hazard and safety-goal catalog linked to each campaign (`services/evidence-collector/evidence_collector/safety_case.yaml`, checked against every bundled campaign)
-- [x] Evidence Collector correlating campaign → events → diagnostics, all over uProtocol (campaign events `…/1003/1/8005`, guardian state `…/1002/1/8006`)
-- [x] Verdict per run: PASS / FAIL / INCONCLUSIVE, with detection latency and mitigation timing
-- [x] Report covering all campaigns, failed scenarios included (`/ui/`, ZIP bundle with SHA-256 manifest)
-- [x] Dashboard: live monitoring, start / stop campaigns, safety evidence view ([`services/dashboard`](services/dashboard/README.md))
-- [x] Final run under Ankaios, all 22 campaigns: 20 PASS, 1 expected FAIL (`opensovd_partial_visibility`); `transport_delay` fixed after it (`tolerated_faults`, [#29](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/29)) and PASS on rerun
-
-#### 6. Orchestration & platform
-- [x] Eclipse Ankaios manages the final orchestrated run (`make final-run`, [`infra/ankaios`](infra/ankaios/README.md))
+**5. Orchestration & platform**
+- [x] Eclipse Ankaios runs the final orchestrated run (`make final-run`)
 - [ ] Run the stack on Eclipse AutoSD ([#24](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/24))
-- [ ] Remote reruns (Eclipse openDUT) with verdict consistency check ([#25](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/25))
+- [ ] Remote reruns with Eclipse openDUT and a verdict consistency check ([#25](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/25))
 
-#### 7. Blueprint & community
-- [x] Reusable package another team can run with one command (`make final-run`: images, Ankaios, all campaigns, verdicts, evidence bundle)
-- [x] CI pipeline on every PR: tests, DFM fixture check, service images, ThreadX firmware
-- [x] CI runs the fault campaigns (`make evidence-ci`: every run must PASS, evidence bundle verified offline)
-- [x] Upstream: SOVD `faults` resource offered to opensovd-core ([opensovd-core#156](https://github.com/eclipse-opensovd/opensovd-core/issues/156#issuecomment-6044980574), follow-up [#28](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/28))
-- [ ] Upstream contribution: update `up-transport-zenoh-python` to zenoh 1.x and the current up-spec ([#26](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/26))
-- [ ] SDV Blueprint proposal ([#27](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/27))
+**6. Community**
+- [x] CI on every PR: tests, DFM fixtures, images, campaigns end to end, ThreadX firmware
+- [x] SOVD `faults` resource offered upstream ([opensovd-core#156](https://github.com/eclipse-opensovd/opensovd-core/issues/156#issuecomment-6044980574), follow-up [#28](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/28))
+- [ ] `up-transport-zenoh-python` on zenoh 1.x and the current up-spec ([#26](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/26))
+- [ ] SDV Blueprint proposal: Safety Evidence Factory ([#27](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/27))
 
-### How we work
+## How we worked
 
-GitHub Issues per roadmap item · feature branches · PRs with one reviewer · CI on every PR ·
-JSON logs with correlation IDs as the raw material for evidence.
+GitHub issue per roadmap item · feature branches · PRs with review · CI on every PR · JSON logs with correlation ids
+as the raw material for evidence. Team: [@petarlazic04](https://github.com/petarlazic04) ·
+[@djurovic04](https://github.com/djurovic04) · [@st4nkich](https://github.com/st4nkich) · [@codermery](https://github.com/codermery).
+
+## Declaration: prepared code and AI assistance
+
+- **Written during the hackathon (6–7 Oct 2026):** everything in this repository except the parts listed below.
+- **Based on existing code:** the AZ3166 firmware starts from [eclipse-threadx/samplex](https://github.com/eclipse-threadx/samplex)
+  (our changes: the `mqtt` app, sensor contract, OLED guardian state, reconnect); ThreadX and NetX Duo are pinned submodules.
+- **Used as upstream dependencies, not forked:** Eclipse KUKSA Databroker (image), opensovd-core and fault-lib (crates,
+  pinned revisions), up-transport-zenoh-rust, Eclipse Zenoh, Eclipse Ankaios, Eclipse Mosquitto.
+- **AI assistance:** most of the code and documentation was written with **Claude Code** (Anthropic) using the
+  **Claude Opus 5.5** model, steered and reviewed by the team; files carry a `Made with Claude` header. A few commits
+  come from the GitHub Copilot agent.
+
+## License
+
+[Apache-2.0](LICENSE)

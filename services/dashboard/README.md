@@ -79,7 +79,7 @@ hazard  ->  fault injection  ->  detection  ->  mitigation  ->  evidence  ->  ve
 * **Simulator-only:** the simulator provides all four cells (`make guardian`). This is enough for every campaign and for the
   evidence; **the evidence runs recorded so far were simulator-only**, not hardware measurements.
 * The Guardian reads cells over uProtocol only, never from KUKSA. Its display command goes to the board over MQTT.
-* More detail: root [`README.md`](../../README.md) (service table, settings, heartbeats, Guardian states, hardware node).
+* More detail: root [`README.md`](../../README.md) (architecture, Eclipse projects, settings, heartbeats, Guardian states) and the [hardware guide](../../docs/hardware-az3166.md).
 
 ## 3. Where is what
 
