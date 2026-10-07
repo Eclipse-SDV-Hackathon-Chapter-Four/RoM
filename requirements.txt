@@ -8,6 +8,5 @@
 -e ./services/simulator
 -e ./services/adapter
 -e ./services/fault-injector
--e ./services/dfm
 -e ./services/evidence-collector
 pytest

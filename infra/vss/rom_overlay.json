@@ -1,0 +1,101 @@
+{
+  "Vehicle": {
+    "type": "branch",
+    "description": "High-level vehicle data.",
+    "children": {
+      "Powertrain": {
+        "type": "branch",
+        "description": "Powertrain data.",
+        "children": {
+          "TractionBattery": {
+            "type": "branch",
+            "description": "Battery Management data.",
+            "children": {
+              "Cells": {
+                "type": "branch",
+                "description": "RoM custom overlay: per-cell data of the traction battery.",
+                "children": {
+                  "Cell1": {
+                    "type": "branch",
+                    "description": "Traction battery cell 1.",
+                    "children": {
+                      "Temperature": {
+                        "type": "sensor",
+                        "datatype": "float",
+                        "unit": "celsius",
+                        "description": "Temperature of traction battery cell 1. RoM custom signal."
+                      }
+                    }
+                  },
+                  "Cell2": {
+                    "type": "branch",
+                    "description": "Traction battery cell 2.",
+                    "children": {
+                      "Temperature": {
+                        "type": "sensor",
+                        "datatype": "float",
+                        "unit": "celsius",
+                        "description": "Temperature of traction battery cell 2. RoM custom signal."
+                      }
+                    }
+                  },
+                  "Cell3": {
+                    "type": "branch",
+                    "description": "Traction battery cell 3.",
+                    "children": {
+                      "Temperature": {
+                        "type": "sensor",
+                        "datatype": "float",
+                        "unit": "celsius",
+                        "description": "Temperature of traction battery cell 3. RoM custom signal."
+                      }
+                    }
+                  },
+                  "Cell4": {
+                    "type": "branch",
+                    "description": "Traction battery cell 4.",
+                    "children": {
+                      "Temperature": {
+                        "type": "sensor",
+                        "datatype": "float",
+                        "unit": "celsius",
+                        "description": "Temperature of traction battery cell 4. RoM custom signal."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "RoM": {
+        "type": "branch",
+        "description": "RoM custom signals.",
+        "children": {
+          "Heartbeat": {
+            "type": "branch",
+            "description": "Liveness counters written by the producers and forwarded to the guardian.",
+            "children": {
+              "Chip": {
+                "type": "sensor",
+                "datatype": "double",
+                "description": "RoM heartbeat of the physical sensor chip (written by the adapter while its telemetry arrives, or simulated): a counter that increases while it is alive. Custom signal."
+              },
+              "Adapter": {
+                "type": "sensor",
+                "datatype": "double",
+                "description": "RoM heartbeat of the MQTT to KUKSA adapter: a counter that increases while it is alive. Custom signal."
+              },
+              "Simulator": {
+                "type": "sensor",
+                "datatype": "double",
+                "description": "RoM heartbeat of the simulator process: a counter that increases while it is alive. Custom signal."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

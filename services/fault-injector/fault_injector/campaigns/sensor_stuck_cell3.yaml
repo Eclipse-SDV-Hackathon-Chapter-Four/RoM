@@ -1,0 +1,13 @@
+# Made with Claude (Claude Code, Anthropic)
+# One cell sensor freezes while the others keep moving. Before per-cell monitoring this was invisible (only Max was
+# watched); now cell 3 gets its own DTC and the pack stays monitored on the healthy cells.
+run_id: sensor-stuck-cell3-01
+seed: 7
+hazard: "H2: frozen temperature sensor on one cell hides a developing fault in that cell"
+safety_goal: "SG2: detect a stuck cell sensor within 10 s and stop trusting it, without disarming the pack warning"
+expected_state: MONITORING
+expected_faults: [battery_guardian.cell3.signal_stuck]
+max_detect_ms: 12000            # guardian STUCK_S = 10 s
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 20, target: simulator, type: stuck, cell: 3}

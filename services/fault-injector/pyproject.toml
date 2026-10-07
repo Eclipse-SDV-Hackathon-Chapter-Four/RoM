@@ -6,12 +6,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rom-fault-injector"
 version = "0.1.0"
-description = "RoM Fault Campaign Runner (placeholder)"
+description = "RoM Fault Campaign Runner: YAML campaigns injected over the simulator and publisher HTTP APIs"
 requires-python = ">=3.10"
-dependencies = ["rom-common", "rom-uprotocol"]
+dependencies = ["rom-common", "pyyaml>=6"]
 
 [project.scripts]
 rom-fault-injector = "fault_injector.__main__:main"
 
 [tool.setuptools]
 packages = ["fault_injector"]
+
+[tool.setuptools.package-data]
+fault_injector = ["campaigns/*.yaml"]

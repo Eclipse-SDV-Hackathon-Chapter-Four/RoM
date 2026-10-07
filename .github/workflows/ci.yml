@@ -1,0 +1,47 @@
+# Made with Claude (Claude Code, Anthropic)
+# CI on every PR and push to main: the same make targets a developer runs locally.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  python-tests:
+    name: Python tests (libs + services)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make test
+
+  dfm:
+    name: DFM (fault-lib build, cargo test, fixtures up to date)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # rebuilds the DFM image (runs cargo test) and replays the guardian scenario into a real dfm_bin
+      - run: make dfm-fixtures
+      - name: Fixtures match the guardian scenario and the real DFM output
+        run: git diff --exit-code services/dfm/fixtures
+
+  images:
+    name: Service images (Ankaios-ready)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make images
+
+  firmware:
+    name: AZ3166 firmware (Eclipse ThreadX)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi cmake ninja-build
+      - run: bash MXChip/AZ3166/scripts/build.sh mqtt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: az3166-mqtt-firmware
+          path: MXChip/AZ3166/build/app/mxchip_threadx.bin

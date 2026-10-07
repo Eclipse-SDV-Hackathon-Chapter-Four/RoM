@@ -64,3 +64,20 @@ def test_mqtt_client_subscribe_dispatch_and_publish():
     assert got == [("rom/sensor/battery/temp", b"x")]
     c.publish("a/b", "hi", qos=1, retain=True)
     c._client.publish.assert_called_with("a/b", "hi", qos=1, retain=True)
+
+
+def test_fault_codes_pack_and_per_cell():
+    assert contracts.cell_fault(2, "signal_stuck") == "battery_guardian.cell2.signal_stuck"
+    assert len(contracts.FAULT_CODES) == len(set(contracts.FAULT_CODES)) == 5 + 4 * 3 + 5   # pack + per cell + heartbeat root causes
+    assert set(contracts.HEARTBEAT_FAULTS) == set(contracts.HEARTBEAT_DIAGNOSIS_ORDER)
+    assert all(c.startswith(contracts.DFM_ENTITY + ".") for c in contracts.FAULT_CODES)
+    for cell, kind in ((0, "signal_stuck"), (5, "signal_stuck"), (1, "bogus")):
+        with pytest.raises(ValueError):
+            contracts.cell_fault(cell, kind)
+
+
+def test_imbalance_thresholds_default_and_env(monkeypatch):
+    t = config.thresholds()
+    assert (t.imbalance_c, t.imbalance_s) == (10.0, 2.0)
+    monkeypatch.setenv("IMBALANCE_C", "6")
+    assert config.thresholds().imbalance_c == 6.0

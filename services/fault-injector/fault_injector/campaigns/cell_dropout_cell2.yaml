@@ -1,0 +1,12 @@
+# Made with Claude (Claude Code, Anthropic)
+# KUKSA stops receiving one cell (wire break on cell 2) while the other three still arrive.
+run_id: cell-dropout-cell2-01
+seed: 7
+hazard: "H4: loss of one cell temperature sensor"
+safety_goal: "SG4: a silent cell is a sensor fault after 2 s; the pack stays monitored on the other cells"
+expected_state: MONITORING
+expected_faults: [battery_guardian.cell2.signal_stale]
+max_detect_ms: 4000             # guardian STALE_MS = 2 s
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 8, target: simulator, type: dropout, cell: 2}

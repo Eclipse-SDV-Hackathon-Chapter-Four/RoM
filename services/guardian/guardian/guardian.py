@@ -1,16 +1,27 @@
 # Made with Claude Code (Anthropic, model Claude Opus 5.5) for the Eclipse SDV Hackathon
 # Chapter Four (team RoM, "Doctor Whodunit" challenge), for competition purposes.
-"""Battery Thermal Guardian - thermal-runaway early-warning state machine.
+"""Battery Thermal Guardian - thermal-runaway early-warning state machine over 4 battery cells.
 
-States: CLEAR -> MONITORING -> WARNING -> CRITICAL -> MITIGATING (-> CRITICAL if
-mitigation fails), plus SENSOR_FAULT when the temperature signal is stale, stuck or out of range.
+States: CLEAR -> MONITORING -> WARNING -> CRITICAL -> MITIGATING (-> CRITICAL if mitigation fails),
+plus SENSOR_FAULT when no cell can be trusted (whole stream stale, or every cell stale / stuck / out of range).
+
+Every cell is monitored on its own. A bad cell sensor raises its own DFM fault and is left out; the
+thermal state machine keeps running on the max of the healthy cells, so one bad sensor never disarms
+the warning. Faults go out as FAILED / PASSED edges on up://<UP_AUTHORITY>/1002/1/8003 (DFM reporter input).
+
+Heartbeats (up://<UP_AUTHORITY>/1001/1/8004) tell it which part of the chain broke: the uProtocol link, the KUKSA
+databroker, the adapter / simulator or the physical chip. A lost heartbeat makes all data suspect: SENSOR_FAULT with a
+short reason ("uP link lost", "KUKSA down", "adapter down", "sim down", "chip silent") and the DFM code of the root
+cause (the one closest to the guardian). See heartbeats.py.
 
 Input comes over uProtocol (rom_uprotocol, Zenoh) from the VSS uProtocol Client, never from the
 KUKSA Databroker directly (challenge architecture rule): KUKSA -> vss-uprotocol-client -> guardian.
 
 Run:
   rom-guardian              test scenario, offline, instant   (or: python -m guardian.guardian)
-  rom-guardian --uprotocol  live: battery temp from up://<UP_AUTHORITY>/1001/1/8001
+  rom-guardian --fault-events  test scenario as fault events (services/dfm/fixtures/guardian_events.jsonl)
+  rom-guardian --uprotocol  live: cells from up://<UP_AUTHORITY>/1001/1/8002, heartbeats from .../8004,
+                            faults to .../1002/1/8003
   make guardian             databroker + simulator + vss-uprotocol-client + guardian in compose
 """
 import os
@@ -19,10 +30,16 @@ import signal
 import sys
 import threading
 import time
+from dataclasses import asdict
+from types import SimpleNamespace
 
-from rom_common import clock, config, jsonlog
-from rom_common.contracts import (CLEAR, CRITICAL, MONITORING, QOS_DISPLAY_CMD, SENSOR_FAULT, TOPIC_DISPLAY_CMD, WARNING,
-                                  build_display_cmd)
+from typing import Dict, List, Mapping, Optional, Tuple, Union
+
+from rom_common import clock, config, contracts, jsonlog
+from rom_common.contracts import (CLEAR, CRITICAL, HB_OK, HEARTBEAT_FAULTS, HEARTBEAT_LOST_REASON, MONITORING,
+                                  N_CELLS, QOS_DISPLAY_CMD, SENSOR_FAULT, TOPIC_DISPLAY_CMD, WARNING, build_display_cmd)
+
+from .heartbeats import HeartbeatMonitor
 
 MITIGATING = "MITIGATING"
 DISPLAY_PERIOD_S = 1.0  # re-publish the display command this often: fresh temp_c, and proof the guardian is alive
@@ -35,40 +52,111 @@ WARN_C, CRIT_C = _T.warn_c, _T.crit_c
 MIN_C, MAX_C = _T.min_plausible_c, _T.max_plausible_c
 STALE_S = _T.stale_ms / 1000
 STUCK_S = _T.stuck_s
+IMBALANCE_C, IMBALANCE_S = _T.imbalance_c, _T.imbalance_s
 MITIGATION_TIMEOUT_S = 5
+
+# Human-readable reason per cell fault kind (also the SENSOR_FAULT reason when every cell has that fault).
+CELL_REASONS = {"signal_stale": "stale signal", "signal_stuck": "stuck signal", "out_of_range": "out of range"}
+PACK_REASONS = {
+    contracts.FAULT_OVER_TEMP_WARNING: "getting hot",
+    contracts.FAULT_OVER_TEMP_CRITICAL: "too hot",
+    contracts.FAULT_MITIGATION_FAILED: "mitigation failed",
+    contracts.FAULT_SIGNAL_STALE: "stale signal",
+    contracts.FAULT_CELL_IMBALANCE: "cell imbalance",
+}
+PACK_REASONS.update({HEARTBEAT_FAULTS[c]: reason for c, reason in HEARTBEAT_LOST_REASON.items()})
+THERMAL_FAULTS = (contracts.FAULT_OVER_TEMP_WARNING, contracts.FAULT_OVER_TEMP_CRITICAL,
+                  contracts.FAULT_MITIGATION_FAILED)
+
+
+class CellMonitor:
+    """One cell sensor: last value, when it last arrived and when it last changed."""
+
+    def __init__(self):
+        self.value: Optional[float] = None
+        self.last_rx = 0.0
+        self.last_change = 0.0
+
+    def feed(self, now: float, value: float) -> None:
+        if value != self.value:
+            self.last_change = now
+        self.value, self.last_rx = value, now
+
+    def fault(self, now: float, stream_start: float) -> Optional[str]:
+        """Fault kind (contracts.CELL_FAULT_KINDS) or None. A cell that never arrived is stale after STALE_S."""
+        if self.value is None:
+            return "signal_stale" if now - stream_start > STALE_S else None
+        if now - self.last_rx > STALE_S:
+            return "signal_stale"
+        if not MIN_C <= self.value <= MAX_C:
+            return "out_of_range"   # before stuck: a pinned 200 °C is out of range, not just stuck
+        if now - self.last_change > STUCK_S:
+            return "signal_stuck"
+        return None
 
 
 class Guardian:
-    def __init__(self):
+    def __init__(self, n_cells: int = N_CELLS, heartbeats: Optional[HeartbeatMonitor] = None):
+        """heartbeats=None (offline scenario, unit tests): no heartbeat is expected."""
+        self.heartbeats = heartbeats
+        self.lost: List[str] = []               # lost heartbeat components, root cause first, from the last update
+        self.cells = {c: CellMonitor() for c in range(1, n_cells + 1)}
         self.state = CLEAR
-        self.temp = None
-        self.last_rx = 0
-        self.last_change = 0
+        self.temp: Optional[float] = None       # pack temperature: max of the valid cells (last known)
+        self.hottest: Optional[int] = None      # cell that set self.temp
+        self.first_rx: Optional[float] = None
+        self.last_rx = 0.0
         self.mitigation_since = 0
         self.mitigation_failed = False
+        self.imbalance_since: Optional[float] = None
+        self.cell_faults: Dict[int, Optional[str]] = {}
+        self.faults: Dict[str, Optional[int]] = {}   # active DFM fault code -> cell (None for pack faults)
 
-    def update(self, now, temp):
-        """Feed one tick (temp=None means no sample arrived). Returns (state, reason)."""
-        if temp is not None:
-            if temp != self.temp:
-                self.last_change = now
-            self.temp, self.last_rx = temp, now
+    def feed_heartbeat(self, now, component: str, status: str = HB_OK) -> None:
+        if self.heartbeats is not None:
+            self.heartbeats.beat(now, component, status)
 
-        state, reason = self.next_state(now)
+    def update(self, now, cells: Union[Mapping[int, float], float, None]):
+        """Feed one tick. cells = {cell: °C} of one message, None = nothing arrived, a number = all cells
+        (single-sensor input, e.g. the offline scenario). Returns (state, reason); self.faults is updated."""
+        if isinstance(cells, (int, float)):
+            cells = dict.fromkeys(self.cells, float(cells))
+        if cells:
+            for c, value in cells.items():
+                if c in self.cells:
+                    self.cells[c].feed(now, value)
+            self.last_rx = now
+            if self.first_rx is None:
+                self.first_rx = now
+
+        self.lost = self.heartbeats.lost(now) if self.heartbeats is not None else []
+        stale_stream = self.first_rx is not None and now - self.last_rx > STALE_S
+        blind = stale_stream or bool(self.lost)      # a lost heartbeat makes every reading suspect, like silence
+        self.cell_faults = {} if blind or self.first_rx is None else {
+            c: m.fault(now, self.first_rx) for c, m in self.cells.items()}
+        valid = {c: m.value for c, m in self.cells.items()
+                 if m.value is not None and not blind and self.cell_faults.get(c) is None}
+        if valid:
+            self.hottest = max(valid, key=valid.get)
+            self.temp = valid[self.hottest]
+
+        state, reason = self.next_state(now, stale_stream, valid)
         if state == MITIGATING and self.state != MITIGATING:
             self.mitigation_since = now
         self.state = state
+        self.faults = self.active_faults(now, stale_stream, valid)
         return state, reason
 
-    def next_state(self, now):
-        if self.temp is None:
+    def next_state(self, now, stale_stream: bool = False, valid: Optional[Dict[int, float]] = None):
+        if self.lost:
+            return SENSOR_FAULT, HEARTBEAT_LOST_REASON.get(self.lost[0], f"{self.lost[0]} lost"[:21])
+        if self.first_rx is None:
             return CLEAR, "no data yet"
-        if now - self.last_rx > STALE_S:
+        if stale_stream:
             return SENSOR_FAULT, "stale signal"
-        if now - self.last_change > STUCK_S:
-            return SENSOR_FAULT, "stuck signal"
-        if not MIN_C <= self.temp <= MAX_C:
-            return SENSOR_FAULT, "out of range"
+        if not valid:
+            kinds = {k for k in self.cell_faults.values() if k}
+            return SENSOR_FAULT, CELL_REASONS[kinds.pop()] if len(kinds) == 1 else "no valid cell"
         if self.temp < WARN_C:
             self.mitigation_failed = False
             return MONITORING, "temp ok"
@@ -84,6 +172,55 @@ class Guardian:
         if self.temp >= CRIT_C:
             return CRITICAL, "too hot"
         return WARNING, "getting hot"
+
+    def active_faults(self, now, stale_stream: bool, valid: Dict[int, float]) -> Dict[str, Optional[int]]:
+        """DFM codes that are failing right now. While the input cannot be judged the earlier codes keep their
+        state: no data is not the same as "cooled down" or "sensor repaired" (whole stream stale: every code;
+        no valid cell: the thermal codes)."""
+        if self.lost:
+            # The root cause explains the silence: its code replaces signal_stale / an older root cause, the
+            # earlier thermal and cell codes keep their state (no data is not "cooled down" or "repaired").
+            kept = {c: cell for c, cell in self.faults.items()
+                    if c != contracts.FAULT_SIGNAL_STALE and c not in HEARTBEAT_FAULTS.values()}
+            return {**kept, HEARTBEAT_FAULTS[self.lost[0]]: None}
+        if self.first_rx is None:
+            return {}
+        if stale_stream:
+            return {**self.faults, contracts.FAULT_SIGNAL_STALE: None}
+        active: Dict[str, Optional[int]] = {
+            contracts.cell_fault(c, kind): c for c, kind in self.cell_faults.items() if kind}
+        if not valid:
+            active.update({c: cell for c, cell in self.faults.items() if c in THERMAL_FAULTS})
+            self.imbalance_since = None
+            return active
+        if self.temp >= WARN_C:
+            active[contracts.FAULT_OVER_TEMP_WARNING] = self.hottest
+        if self.temp >= CRIT_C:
+            active[contracts.FAULT_OVER_TEMP_CRITICAL] = self.hottest
+        if self.state == CRITICAL and self.mitigation_failed:
+            active[contracts.FAULT_MITIGATION_FAILED] = self.hottest
+        if len(valid) >= 2 and max(valid.values()) - min(valid.values()) > IMBALANCE_C:
+            self.imbalance_since = now if self.imbalance_since is None else self.imbalance_since
+            if now - self.imbalance_since >= IMBALANCE_S:
+                active[contracts.FAULT_CELL_IMBALANCE] = self.hottest
+        else:
+            self.imbalance_since = None
+        return active
+
+    def cells_text(self) -> str:
+        """All cell values for the DFM environment data: "31.2,30.1,,29.9" (empty = never arrived)."""
+        return ",".join("" if m.value is None else f"{m.value:g}" for _, m in sorted(self.cells.items()))
+
+
+def fault_edges(before: Mapping[str, Optional[int]], after: Mapping[str, Optional[int]]) -> List[Tuple[str, str, Optional[int]]]:
+    """(code, FAILED / PASSED, cell) for every fault that started or ended, in a stable order."""
+    started = [(code, "FAILED", after[code]) for code in sorted(after) if code not in before]
+    ended = [(code, "PASSED", before[code]) for code in sorted(before) if code not in after]
+    return ended + started
+
+
+def fault_reason(code: str) -> str:
+    return PACK_REASONS.get(code) or CELL_REASONS[code.rsplit(".", 1)[1]]
 
 
 # One temperature per second. None = sensor sent nothing. Small +-0.1 wiggle so it doesn't look stuck.
@@ -115,52 +252,124 @@ def display_cmd(state, temp, reason, seq, ts_ms):
     return build_display_cmd(shown, None if temp is None else round(temp, 2), reason, seq, ts_ms)
 
 
-def subscribe_temp(samples, log):
-    """Push every uProtocol sample into `samples`. Zenoh reconnects on its own (stale while down)."""
+def subscribe_inputs(samples, log):
+    """Push every cell message and every heartbeat into `samples`. Zenoh reconnects on its own (stale while down)."""
     from rom_uprotocol import uris
-    from rom_uprotocol.subscriber import UpSignalSource
+    from rom_uprotocol.subscriber import UpCellsSource, UpHeartbeatSource
     from rom_uprotocol.transport import make_transport
 
     transport = make_transport(uris.guardian_uri())
-    status = UpSignalSource(transport, samples.put, lambda reason: log.log("rejected", reason=reason)).start()
-    log.log("subscribed", zenoh_key=status.message)
+    reject = lambda reason: log.log("rejected", reason=reason)  # noqa: E731
+    cells = UpCellsSource(transport, samples.put, reject).start()
+    beats = UpHeartbeatSource(transport, samples.put, reject).start()
+    log.log("subscribed", zenoh_key=cells.message, heartbeat_zenoh_key=beats.message)
     return transport
+
+
+def fault_publisher(transport, log):
+    """FAILED / PASSED edges on up://<authority>/1002/1/8003 for the DFM reporter (no TTL: an edge never expires)."""
+    from rom_uprotocol import uris
+    from rom_uprotocol.publisher import SignalPublisher
+
+    return SignalPublisher(transport.send_sync, uris.guardian_fault_topic(), ttl_ms=0, log=log)
 
 
 def run_uprotocol():
     log = jsonlog.get_logger("guardian")
     samples = queue.Queue()
-    transport = subscribe_temp(samples, log)  # keep a reference, or the Zenoh session is closed
+    transport = subscribe_inputs(samples, log)  # keep a reference, or the Zenoh session is closed
+    faults_out = fault_publisher(transport, log)
     from rom_common import mqtt  # only the live mode needs paho
     display = mqtt.MqttClient(f"rom-guardian-{os.getpid()}").connect()  # display commands for the device OLED
     try:
-        loop(samples, log, display)
+        loop(samples, log, display, faults_out)
     finally:
         display.close()
         transport.close_sync()  # an open Zenoh session keeps the process alive after SIGTERM
         log.log("stopped")
 
 
-def loop(samples, log, display=None):
-    g, start = Guardian(), time.monotonic()
-    last = None  # last uProtocol sample: its msg_id/seq link a state change to the message that caused it
+def fault_events(g: Guardian, before: Mapping[str, Optional[int]], last, ts_ms: int, trigger=None):
+    """FaultEvent for every fault edge since `before`.
+
+    seq / msg_id come from `trigger` (what arrived last: a cell message or a heartbeat), run_id from the last cell message."""
+    from rom_uprotocol.contract import FaultEvent
+
+    src = trigger or last
+    return [FaultEvent(code=code, stage=stage, ts_ms=ts_ms, cell=cell,
+                       temp_c=None if g.temp is None else round(g.temp, 2), cells=g.cells_text(),
+                       reason=fault_reason(code) if stage == "FAILED" else "cleared",
+                       seq=src.seq if src else None, msg_id=src.msg_id if src else None,
+                       run_id=last.run_id if last else None)
+            for code, stage, cell in fault_edges(before, g.faults)]
+
+
+def scenario_fault_events() -> List[str]:
+    """SCENARIO as fault event JSON lines (ts_ms = scenario second * 1000): services/dfm/fixtures input."""
+    from rom_uprotocol.contract import build_fault_event
+
+    g, lines = Guardian(), []
+    for t, temp in enumerate(SCENARIO):
+        before = g.faults
+        g.update(t, temp)
+        last = SimpleNamespace(seq=t, msg_id=None, run_id=None)
+        lines += [build_fault_event(e).decode() for e in fault_events(g, before, last, t * 1000)]
+    return lines
+
+
+def report_faults(g: Guardian, before: Mapping[str, Optional[int]], last, log, publisher=None, trigger=None) -> None:
+    """Log every fault edge as fault_event and, live, publish it for the DFM."""
+    from rom_uprotocol.contract import build_fault_event
+
+    for event in fault_events(g, before, last, clock.now_ms(), trigger):
+        code, stage = event.code, event.stage
+        log.log("fault_event", **asdict(event))
+        if publisher is not None:
+            publisher.publish_json(lambda seq, ts, e=event: build_fault_event(e), code=code, stage=stage)
+
+
+def loop(samples, log, display=None, faults_out=None):
+    from rom_uprotocol.subscriber import HeartbeatSample
+
+    hb = config.heartbeat()
+    g, start = Guardian(heartbeats=HeartbeatMonitor(hb.required, hb.stale_ms / 1000)), time.monotonic()
+    log.log("started", required_heartbeats=list(hb.required), heartbeat_stale_ms=hb.stale_ms)
+    last = None  # last cell message: its msg_id/seq/run_id link a state change or fault to the message behind it
+    trigger = None  # whatever arrived last (cell message or heartbeat): what a state change is attributed to
+    last_reason = None
     display_seq, last_display = 0, 0.0
     # Tick even without samples, otherwise a dead sensor would never be detected as stale.
     while True:
+        cells = None
         try:
-            last = samples.get(timeout=TICK_S)
-            temp = last.value
+            trigger = samples.get(timeout=TICK_S)
         except queue.Empty:
-            temp = None
-        before = g.state
-        state, reason = g.update(time.monotonic() - start, temp)
+            trigger = None
+        now = time.monotonic() - start
+        if isinstance(trigger, HeartbeatSample):
+            g.feed_heartbeat(now, trigger.component, trigger.status)
+        elif trigger is not None:
+            last = trigger
+            cells = last.cells
+        before, faults_before = g.state, g.faults
+        state, reason = g.update(now, cells)
+        fields = dict(reason=reason, temp_c=None if g.temp is None else round(g.temp, 2), cell=g.hottest,
+                      cells=g.cells_text(), lost=g.lost,
+                      heartbeats=g.heartbeats.status(now) if g.heartbeats is not None else {},
+                      seq=trigger.seq if trigger else None, msg_id=trigger.msg_id if trigger else None,
+                      run_id=last.run_id if last else None)
         if state != before:
-            log.log("state_change", **{"from": before}, to=state, reason=reason, temp_c=round(g.temp, 2),
-                    seq=last.seq if last else None, msg_id=last.msg_id if last else None)
+            log.log("state_change", **{"from": before}, to=state, **fields)
+        elif reason != last_reason and last_reason is not None:
+            # same state, new cause (e.g. SENSOR_FAULT "chip silent" -> "KUKSA down"): the root cause can sharpen
+            log.log("reason_change", state=state, previous_reason=last_reason, **fields)
+        last_reason = reason
+        if g.faults != faults_before:
+            report_faults(g, faults_before, last, log, faults_out, trigger)
         # State shown on the device display (QoS 1, retained): on every change and as a heartbeat.
-        now = time.monotonic()
-        if display is not None and (state != before or now - last_display >= DISPLAY_PERIOD_S):
-            display_seq, last_display = display_seq + 1, now
+        tick = time.monotonic()
+        if display is not None and (state != before or tick - last_display >= DISPLAY_PERIOD_S):
+            display_seq, last_display = display_seq + 1, tick
             display.publish(TOPIC_DISPLAY_CMD, display_cmd(state, g.temp, reason, display_seq, clock.now_ms()),
                             qos=QOS_DISPLAY_CMD, retain=True)
 
@@ -174,6 +383,8 @@ def main():
     try:
         if "--uprotocol" in sys.argv:
             run_uprotocol()
+        elif "--fault-events" in sys.argv:
+            print("\n".join(scenario_fault_events()))
         else:
             g = Guardian()
             print(f"{'time':>6}  {'temp':>6}  state")

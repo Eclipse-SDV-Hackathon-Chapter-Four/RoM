@@ -38,30 +38,35 @@ Watch the topic from a terminal: `rom-up-monitor` (or `python -m rom_uprotocol.s
 
 | Module | What it is |
 |---|---|
-| `contract.py` | uEntity IDs, topic resources, signal payload `build_/parse_signal_msg` |
+| `contract.py` | uEntity IDs, topic resources, signal payload `build_/parse_signal_msg`, heartbeat payload `build_/parse_heartbeat_msg` |
 | `config.py` | `uprotocol()`: authority, transport, Zenoh endpoints from env |
-| `uris.py` | `publisher_uri`, `battery_temp_topic`, `guardian_uri` |
+| `uris.py` | `publisher_uri`, `battery_temp_topic`, `heartbeat_topic`, `guardian_uri` |
 | `transport/` | `make_transport(source)` + `register_transport(name, factory)`; `zenoh.py` = `ZenohTransport` |
-| `publisher.py` | `SignalPublisher` with interceptor chain |
-| `subscriber.py` | `UpSignalSource`, `Sample` |
+| `publisher.py` | `SignalPublisher` and `HeartbeatPublisher` (seq per component) with interceptor chain |
+| `faults.py` | `TransportFaults`: a controllable interceptor (drop, reorder, duplicate, delay) |
+| `subscriber.py` | `UpSignalSource`, `UpCellsSource`, `UpHeartbeatSource` / `HeartbeatSample`, `UpFaultSource` |
 
 ## Extension points (open for extension, closed for modification)
 
 | Need | How |
 |---|---|
 | Another transport (SOME/IP, MQTT, ...) | implement `UTransport`, `register_transport("name", factory)`, set `UP_TRANSPORT=name` |
-| Fault injection on the wire | an interceptor `interceptor(message, forward) -> UStatus` passed to `SignalPublisher(..., interceptors=[...])`: drop (don't call `forward`), duplicate (call it twice), delay, corrupt |
+| Fault injection on the wire | an interceptor `interceptor(message, forward) -> UStatus` passed to `SignalPublisher(..., interceptors=[...])`: drop (don't call `forward`), duplicate (call it twice), delay, corrupt. Ready-made and steerable at runtime: `TransportFaults` (`faults.add("delay", {"ms": 1500}, duration_s=10)`), wired to HTTP in the VSS uProtocol Client |
 | Another signal source | lives in the client (`SignalSource`), the library does not change |
 
 ## uProtocol contract
 
-| | Value |
-|---|---|
-| Topic | `up://<UP_AUTHORITY>/1001/1/8001` (`ue_id` 0x1001 = VSS uProtocol Client, resource 0x8001 = battery temp) |
-| Zenoh key | `up/rom-vehicle/1001/0/1/8001/{}/{}/{}/{}/{}` |
-| Payload format | `UPAYLOAD_FORMAT_JSON` |
-| Payload | `{"vss_path":"Vehicle.Powertrain.TractionBattery.Temperature.Max","value":47.2,"seq":7,"ts_ms":...,"source_ts_ms":...}` |
-| TTL | `STALE_MS` (2000 ms) |
+All payloads are `UPAYLOAD_FORMAT_JSON`; builders and parsers in `contract.py`.
+
+| Topic | From → to | Payload | TTL |
+|---|---|---|---|
+| `up://<UP_AUTHORITY>/1001/1/8002` cells | client → guardian | `{"cells":{"1":31.2,"2":30.1,"4":29.9},"seq":7,"ts_ms":…,"source_ts_ms":…,"run_id":"…"}` (a cell not written in that update is absent) | `STALE_MS` |
+| `up://<UP_AUTHORITY>/1001/1/8004` heartbeats | client → guardian | `{"component":"databroker","status":"ok","seq":7,"ts_ms":…}` (`status`: `ok` / `down`; components: `uprotocol`, `databroker`, and the producers' `chip` / `adapter` / `simulator` forwarded from KUKSA) | `HEARTBEAT_STALE_MS` |
+| `up://<UP_AUTHORITY>/1001/1/8001` Max | client → monitors | `{"vss_path":"Vehicle.Powertrain.TractionBattery.Temperature.Max","value":47.2,"seq":7,"ts_ms":…,"source_ts_ms":…}` | `STALE_MS` |
+| `up://<UP_AUTHORITY>/1002/1/8003` faults | guardian → DFM reporter | `FaultEvent`: `{"code","stage":"FAILED"/"PASSED","ts_ms","cell","temp_c","cells","reason","seq","msg_id","run_id"}`, see [`services/dfm/README.md`](../../services/dfm/README.md) | none |
+
+Zenoh keys follow up-spec, e.g. `up/rom-vehicle/1001/0/1/8002/{}/{}/{}/{}/{}`. `rom-up-monitor [--cells | --faults | --heartbeats]`
+prints any of them.
 
 `seq` lets a consumer detect dropped / duplicated / reordered messages; the uProtocol message id
 (`msg_id`, a UUIDv7) is the correlation ID the guardian logs with every `state_change`.

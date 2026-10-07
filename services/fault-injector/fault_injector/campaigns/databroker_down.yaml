@@ -1,0 +1,13 @@
+# Made with Claude (Claude Code, Anthropic)
+# The client reports the KUKSA databroker as down (a simulated outage: the probe answers "down", the databroker
+# itself keeps running). For a real outage: docker compose stop databroker. Needs the publisher fault API.
+run_id: databroker-down-01
+seed: 7
+hazard: "H10: KUKSA databroker unavailable"
+safety_goal: "SG6: name a dead databroker within 3 s"
+expected_state: SENSOR_FAULT      # reason: "KUKSA down"
+expected_faults: [battery_guardian.databroker_down]
+max_detect_ms: 3000
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 8, target: publisher, type: databroker_down}

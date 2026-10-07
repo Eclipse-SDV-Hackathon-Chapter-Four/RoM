@@ -1,0 +1,16 @@
+# Made with Claude (Claude Code, Anthropic)
+# Multi-fault: a cell overheats while the link is flaky (messages duplicated and delayed 600 ms).
+# The overheat must still be caught: unrelated transport noise may not hide it.
+run_id: combined-runaway-lossy-link-01
+seed: 11
+hazard: "H1+H6: thermal runaway while the message stream is degraded"
+safety_goal: "SG1: warn at 38 °C and request cooling at 45 °C, also on a degraded link"
+expected_state: CRITICAL
+expected_faults: [battery_guardian.over_temp_warning, battery_guardian.over_temp_critical,
+                  battery_guardian.cell_imbalance]
+max_detect_ms: 40000
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 50, target: simulator, type: drift, cell: 1, params: {rate_c_per_s: 0.7}}
+  - {at_s: 15, duration_s: 30, target: publisher, type: duplicate, params: {topic: signal}}
+  - {at_s: 15, duration_s: 30, target: publisher, type: delay, params: {ms: 600, topic: signal}}
