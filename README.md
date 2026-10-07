@@ -200,6 +200,24 @@ mosquitto_pub -h <broker-lan-ip> -t "ThreadXAZ3166/incoming" -m "get"
 
 **If nothing comes through:** confirm you're on the same Wi-Fi as the broker (both the 2.4GHz and 5GHz bands of the same AP usually reach it) and that the host IP above is still current — if the broker runs on someone's laptop, a DHCP lease change will move it.
 
+### Failure behavior and known limits (AZ3166 `mqtt` app)
+
+Derived from reading the firmware and the bundled NetX Duo sources. Nothing below has been verified on a physical board unless it says so; the Wi-Fi radio driver (WICED) is a prebuilt binary whose source is not in the repo.
+
+| Situation | What happens |
+|---|---|
+| **Broker goes away** (broker stopped, TCP reset) | Detected through the MQTT disconnect callback. The board retries after 1, 2, 4, 8, then every 10 s and restores Last Will, `online` status and subscriptions. Hardware-tested. |
+| **Silent network partition** (path dies, no reset) | The 10 s MQTT keepalive does not help here: every publish, QoS 0 included, restarts the keepalive timer, so with telemetry every 500 ms no PINGREQ is sent. Detection comes from TCP: NetX gives up after `NX_TCP_MAXIMUM_RETRIES` = 10 retransmissions at a constant 1 s, so roughly 10 to 12 s after the last acknowledged data, then the normal reconnect path runs. Meanwhile the system does not depend on the board noticing: the Guardian flags the signal stale after 2 s, the OLED shows `G:NO LINK` after 5 s without a display command, and the broker publishes the retained `offline` Last Will after about 15 s. |
+| **Wi-Fi association lost** (AP off, out of range) | Not handled by the application. `wwd_network_connect()` runs once at boot and is never called again, and the app does not poll the link or restart DHCP. Whether the WICED layer rejoins on its own is not known. If the link comes back by itself with the same address, the MQTT retry loop reconnects without a reset. Otherwise reset the board. |
+| **Oversized MQTT message to the board** | The firmware drops malformed or oversized messages that fit its 16 KB drain buffer and logs `Dropped an oversized MQTT message`. A packet larger than the receive packet pool (12 packets of about 1.4 KB) can break the MQTT session; the reconnect loop then recovers it, and `clean_session=1` stops the broker replaying it. This is a RAM limit of the board, not a protocol bug; the static buffers are deliberately not enlarged. |
+
+**`seq` semantics.** `seq` is incremented when the firmware builds a sensor message, immediately before the publish attempt (`telemetry_build_sensor_msg()`), and only while the MQTT session is up. It restarts at 1 after every reboot. Consequences:
+
+- Messages built but lost in flight (for example during the silent-partition window above) leave a gap that the adapter logs as `seq_gap` with the `missing` count.
+- A period with no MQTT session builds no messages, so `seq` does not advance and no gap appears. That outage shows up as a jump in `ts_ms`, as the `offline` / `online` status messages, and as a stale signal in the Guardian.
+- A reboot shows as `seq_backwards`; an on-demand request on `ThreadXAZ3166/incoming` consumes one extra `seq`.
+- So `seq_gap` means "built and lost", and a time gap means "nothing was produced". The two signals are complementary, and the current behavior is deliberately left unchanged.
+
 ## Roadmap
 
 **Idea:** a portable *Safety Evidence Factory* around the Battery Thermal Guardian. Every injected fault
