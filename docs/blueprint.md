@@ -30,7 +30,7 @@ replayable fault evidence, and OpenSOVD / uProtocol users looking for a working 
 | SOVD `faults` resource on opensovd-core (list, filter, detail with environment data, clear) | any DFM catalog | [`services/opensovd`](../services/opensovd) |
 | Evidence Collector: safety case, PASS / FAIL / INCONCLUSIVE, report, SHA-256 bundle, offline re-verification | any service that publishes its state and faults | [`services/evidence-collector`](../services/evidence-collector) |
 | Ankaios manifest + one-command run | the whole stack | [`infra/ankaios`](../infra/ankaios) |
-| Example guardian (4 cells, whodunit heartbeats) and ThreadX sensor node | reference implementation | [`services/guardian`](../services/guardian), [`MXChip/AZ3166`](../MXChip/AZ3166) |
+| Example guardian (4 cells, whodunit heartbeats) and a ThreadX node that is sensor and actuator | reference implementation | [`services/guardian`](../services/guardian), [`MXChip/AZ3166`](../MXChip/AZ3166) |
 
 ## Run it
 
@@ -42,6 +42,25 @@ Only Docker and `make` (Linux x86_64). Every step is also what CI runs on every 
 | 2. One campaign | `make campaign C=databroker_down`, then `make evidence` | verdict with detection latency and the DTC from OpenSOVD |
 | 3. Everything, orchestrated | `make final-run` (podman + Ankaios ≥ 1.0, ~25 min) | `runs/<id>/`: verdicts, summary, evidence bundle, logs |
 | CI | `make evidence-ci` | fails unless every campaign in `CI_CAMPAIGNS` PASSes and the bundle verifies offline |
+
+## From simulation to a real device
+
+The same pipeline runs with a real ECU-like device in the loop. The reference is an MXChip AZ3166 on Eclipse ThreadX that
+is **both ends of the loop**:
+
+```
+AZ3166 sensor ──MQTT──▶ adapter ──▶ KUKSA ──▶ uProtocol ──▶ guardian ──MQTT──▶ AZ3166 OLED (state, temperature, reason)
+```
+
+| Pattern | How | Why it matters for reuse |
+|---|---|---|
+| **Sensor** | the board publishes its temperature every 500 ms on `rom/sensor/battery/temp`; the adapter validates it against the sensor contract and writes it as cell 1 | a real reading enters the same VSS / uProtocol path as the simulated ones |
+| **Actuator** | the guardian publishes its state on `rom/actuator/display/cmd` (retained); the board shows state, temperature and reason on its OLED | the reaction is visible on the device, not only in logs |
+| **Swap without code change** | `make hw` (board = cell 1, simulator = cells 2-4) or the dashboard's cell 1 switch; exactly one writer per cell | the guardian, DTCs and evidence stay unchanged between simulation and hardware |
+| **Device liveness** | MQTT Last Will (`offline`) and a telemetry timeout become the `chip` heartbeat → `SENSOR_FAULT` "chip silent", DTC `chip_silent`; the board shows `G:NO LINK` when the guardian goes quiet | a dead device is named as the root cause, in both directions |
+
+To use another device: publish the sensor contract ([`contracts.py`](../libs/rom-common/rom_common/contracts.py)), subscribe to
+the display command, and set `ADAPTER_CELL` to the cell it replaces. Firmware and flashing: [hardware guide](hardware-az3166.md).
 
 ## Adapt it to your own safety function
 
@@ -67,7 +86,9 @@ Only Docker and `make` (Linux x86_64). Every step is also what CI runs on every 
 
 ## Status and limits
 
-- **Verified:** 22 campaigns under Ankaios (20 PASS, 1 FAIL on purpose, 1 fixed and PASS on rerun); CI on every PR.
+- **Verified:** 22 campaigns under Ankaios (20 PASS, 1 FAIL on purpose, 1 fixed and PASS on rerun); CI on every PR, including
+  the ThreadX firmware build. The campaigns ran with the simulator; the AZ3166 loop (sensor in, guardian state on the OLED)
+  was verified by hand on the real board.
 - **Not yet:** AutoSD as the runtime ([#24](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/24)),
   remote reruns with openDUT ([#25](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/25)), a CAN trace
   source through the KUKSA CAN Provider ([#22](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/22)).
