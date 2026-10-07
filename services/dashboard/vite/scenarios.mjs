@@ -5,11 +5,20 @@
 //   GET  /api/scenarios          {scenarios: [{id, label}]}
 //   GET  /api/scenarios/status   {status: idle|running|completed|failed, scenario?, startedAt?, finishedAt?, exitCode?}
 //   POST /api/scenarios/run      {"scenario": "<id>"}  ->  202 {status: "running", scenario}
-//                                400 unknown id / bad body · 409 already running · 503 stack not healthy
+//                                400 unknown id / bad body · 409 already running or stopping · 503 stack not healthy
+//   POST /api/scenarios/stop     (no body)  ->  202 {status: "stopping", scenario} · 409 nothing running / already stopping
+//
+// status: idle | running | stopping | completed | failed | stopped. "stopped" is an orchestration status only (the stop
+// was requested); the verdict of an interrupted campaign is whatever the Evidence Collector records, never invented here.
+// Stop = SIGINT to the exact campaign container (the fault injector then clears its faults and logs campaign_end
+// "interrupted"; SIGTERM would be ignored by a PID 1 without a handler and skip that cleanup), then, only after a grace
+// period, SIGKILL of that same container. Containers are named rom-dashboard-campaign-<id>-<random> and labelled
+// rom.dashboard.campaign=<id>; the API takes no container argument and every docker call is checked against that name.
 //
 // Security: the browser sends an id, never a command. The id must be a key of SCENARIOS (and its YAML must exist in the
 // runtime repo); the command and its arguments are fixed here and started with spawn() and an argument array, no shell.
-import { spawn as nodeSpawn } from "node:child_process";
+import { execFile, spawn as nodeSpawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,12 +47,21 @@ const COMPOSE_FILE = path.join("infra", "docker-compose.yml");
 const MAX_BODY = 1024;
 const MAX_TAIL = 2000;
 
-/** The exact argv of `make campaign C=<id>` (Makefile: $(DC) --profile tools run --rm -T fault-injector ...). */
-export function campaignCommand(id) {
-  return { command: "docker", args: ["compose", "-f", COMPOSE_FILE, "--profile", "tools", "run", "--rm", "-T", "fault-injector", "rom-fault-injector", "run", id] };
+/** Containers started by the dashboard: this name pattern and label are the only thing stop ever touches. */
+export const CONTAINER_PREFIX = "rom-dashboard-campaign-";
+export const CAMPAIGN_LABEL = "rom.dashboard.campaign";
+const CONTAINER_NAME = /^rom-dashboard-campaign-[a-z0-9_]+-[0-9a-f]{6}$/;
+export const isCampaignContainer = (name) => typeof name === "string" && CONTAINER_NAME.test(name);
+
+/** The argv of `make campaign C=<id>` (Makefile: $(DC) --profile tools run --rm -T fault-injector ...), plus a name and a label. */
+export function campaignCommand(id, container) {
+  return {
+    command: "docker",
+    args: ["compose", "-f", COMPOSE_FILE, "--profile", "tools", "run", "--rm", "-T", "--name", container, "--label", `${CAMPAIGN_LABEL}=${id}`,
+      "fault-injector", "rom-fault-injector", "run", id],
+  };
 }
 
-// ROM_RUNTIME_REPO: the checkout whose infra/docker-compose.yml runs the stack. Default: the repository this file is in.
 export const defaultRuntimeRepo = () => process.env.ROM_RUNTIME_REPO || fileURLToPath(new URL("../../..", import.meta.url));
 const defaultHealthUrl = () => `${(process.env.EVIDENCE_API_TARGET || "http://localhost:8082").replace(/\/$/, "")}/health`;
 
@@ -75,67 +93,141 @@ async function checkHealth(healthUrl, fetchFn) {
   }
 }
 
+/** Plain `docker <args>` for the short stop / cleanup commands: resolves {code, stdout}, never rejects. */
+function dockerExec(args, { timeoutMs = 15000 } = {}) {
+  return new Promise((resolve) => {
+    execFile("docker", args, { timeout: timeoutMs, shell: false }, (err, stdout) => {
+      resolve({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0, stdout: String(stdout || "") });
+    });
+  });
+}
+
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
 /** The controller behind the routes; options are injectable so tests never touch Docker. */
 export function createScenarioRunner({
   runtimeRepo = defaultRuntimeRepo(),
   healthUrl = defaultHealthUrl(),
   spawn = nodeSpawn,
+  docker = dockerExec,
   fetchFn = fetch,
   now = () => new Date().toISOString(),
+  graceMs = 5000,
+  newId = () => crypto.randomBytes(3).toString("hex"),
 } = {}) {
   let state = { status: "idle" };
+  // Not part of the public state: the process handle and what stop() waits for.
+  let current = null; // {child, container, exited: Promise, markExited}
+
+  const publicState = () => {
+    const { container, ...rest } = state; // the container name stays server-side
+    return rest;
+  };
+
+  /** Sets the terminal state once, from whichever of close / error / adoption sees the end first. */
+  const finish = (exitCode, error) => {
+    if (state.status !== "running" && state.status !== "stopping") return;
+    const base = { scenario: state.scenario, startedAt: state.startedAt, finishedAt: now(), container: state.container };
+    if (state.status === "stopping") {
+      state = { status: "stopped", ...base, exitCode: null, ...(state.note ? { note: state.note } : {}) };
+    } else {
+      state = { status: exitCode === 0 ? "completed" : "failed", ...base, exitCode, ...(exitCode === 0 ? {} : { error: error || "" }) };
+    }
+    current?.markExited();
+  };
 
   const run = async (id) => {
     if (typeof id !== "string" || !Object.hasOwn(SCENARIOS, id) || !listScenarios(runtimeRepo).some((s) => s.id === id)) {
       return { code: 400, body: { error: "Unknown scenario" } };
     }
-    if (state.status === "running") return { code: 409, body: { error: "A scenario is already running", scenario: state.scenario } };
+    if (state.status === "running" || state.status === "stopping") {
+      return { code: 409, body: { error: `A scenario is already ${state.status}`, scenario: state.scenario } };
+    }
     // Claim the slot before the first await: two requests in the same tick must not both pass.
-    state = { status: "running", scenario: id, startedAt: now() };
+    const container = `${CONTAINER_PREFIX}${id}-${newId()}`;
+    state = { status: "running", scenario: id, startedAt: now(), container };
     const unhealthy = await checkHealth(healthUrl, fetchFn);
     if (unhealthy) {
       state = { status: "idle" };
       return { code: 503, body: { error: "Runtime stack is not healthy", detail: unhealthy } };
     }
-    const { command, args } = campaignCommand(id);
+    const { command, args } = campaignCommand(id, container);
     let tail = "";
     const keep = (chunk) => {
       tail = (tail + chunk.toString()).slice(-MAX_TAIL);
     };
-    const finish = (exitCode, error) => {
-      state = {
-        status: exitCode === 0 ? "completed" : "failed",
-        scenario: id,
-        startedAt: state.startedAt,
-        finishedAt: now(),
-        exitCode,
-        ...(exitCode === 0 ? {} : { error: error || tail.trim().split("\n").slice(-3).join("\n") }),
-      };
-    };
+    let markExited;
+    const exited = new Promise((r) => (markExited = r));
+    current = { child: null, container, exited, markExited };
+    const end = (code, error) => finish(code, error || tail.trim().split("\n").slice(-3).join("\n"));
     try {
       const child = spawn(command, args, { cwd: runtimeRepo, stdio: ["ignore", "pipe", "pipe"], shell: false });
+      current.child = child;
       child.stdout?.on("data", keep);
       child.stderr?.on("data", keep);
       let done = false;
       child.on("error", (e) => {
         if (!done) {
           done = true;
-          finish(-1, `could not start: ${e.message}`);
+          end(-1, `could not start: ${e.message}`);
         }
       });
       child.on("close", (code, signal) => {
         if (!done) {
           done = true;
-          finish(code ?? -1, signal ? `terminated by ${signal}` : undefined);
+          end(code ?? -1, signal ? `terminated by ${signal}` : undefined);
         }
       });
     } catch (e) {
-      finish(-1, `could not start: ${e instanceof Error ? e.message : e}`);
+      end(-1, `could not start: ${e instanceof Error ? e.message : e}`);
     }
     return { code: 202, body: { status: "running", scenario: id } };
   };
 
-  return { run, status: () => ({ ...state }), list: () => listScenarios(runtimeRepo) };
+  const waitExit = (ms) => Promise.race([current.exited.then(() => true), sleepMs(ms).then(() => false)]);
+
+  /** Escalation, bounded: SIGINT to the campaign container -> (grace) -> SIGKILL of it -> rm -f -> last resort the CLI child. */
+  const terminate = async (cur) => {
+    const { container } = cur;
+    if (!isCampaignContainer(container)) return; // never act on anything that is not ours
+    const sig = await docker(["kill", "--signal=SIGINT", container]);
+    if (sig.code !== 0) cur.child?.kill?.("SIGINT"); // no such container (yet): ask the compose CLI that started it
+    if (await waitExit(graceMs)) return;
+    state = { ...state, note: "did not stop on SIGINT within the grace period: killed; faults it injected are cleared by the next campaign start" };
+    await docker(["kill", container]);
+    cur.child?.kill?.("SIGKILL");
+    if (!(await waitExit(3000))) {
+      await docker(["rm", "-f", container]);
+      finish(null); // the CLI never reported back: do not stay "stopping" forever
+      return;
+    }
+    await docker(["rm", "-f", container]); // --rm normally did it already; no-op error if so
+  };
+
+  const stop = async () => {
+    if (state.status === "stopping") return { code: 409, body: { error: "The scenario is already stopping", status: "stopping", scenario: state.scenario } };
+    if (state.status !== "running" || !current) return { code: 409, body: { error: "No scenario is currently running" } };
+    state = { ...state, status: "stopping" };
+    const cur = current;
+    void terminate(cur).catch(() => finish(null));
+    return { code: 202, body: { status: "stopping", scenario: state.scenario } };
+  };
+
+  /** After a dev-server restart: pick up a campaign container this dashboard started earlier (label + name pattern only). */
+  const adopt = async () => {
+    if (state.status !== "idle") return;
+    const out = await docker(["ps", "--filter", `label=${CAMPAIGN_LABEL}`, "--format", `{{.Names}} {{.Label "${CAMPAIGN_LABEL}"}}`]);
+    if (out.code !== 0) return;
+    const found = out.stdout.split("\n").map((l) => l.trim().split(" ")).find(([n, id]) => isCampaignContainer(n) && Object.hasOwn(SCENARIOS, id));
+    if (!found || state.status !== "idle") return;
+    const [container, id] = found;
+    let markExited;
+    current = { child: null, container, exited: new Promise((r) => (markExited = r)), markExited };
+    state = { status: "running", scenario: id, startedAt: now(), container };
+    void docker(["wait", container], { timeoutMs: 3600000 }).then((w) => finish(w.code === 0 ? Number.parseInt(w.stdout, 10) || 0 : -1, w.code === 0 ? "" : "lost track of the container"));
+  };
+
+  return { run, stop, adopt, status: publicState, list: () => listScenarios(runtimeRepo) };
 }
 
 function readJson(req) {
@@ -173,11 +265,15 @@ function middleware(runner) {
     const method = req.method || "GET";
     if (url === "/") return method === "GET" ? send(res, 200, { scenarios: runner.list() }) : send(res, 405, { error: "Method not allowed" });
     if (url === "/status") return method === "GET" ? send(res, 200, runner.status()) : send(res, 405, { error: "Method not allowed" });
-    if (url !== "/run") return next();
+    if (url !== "/run" && url !== "/stop") return next();
     if (method !== "POST") return send(res, 405, { error: "Method not allowed" });
     // A page of another origin must not be able to start campaigns: browsers always send Origin on a cross-origin POST.
     const origin = req.headers.origin;
     if (origin && new URL(origin).host !== req.headers.host) return send(res, 403, { error: "Cross-origin request refused" });
+    if (url === "/stop") {
+      const out = await runner.stop();
+      return send(res, out.code, out.body);
+    }
     let body;
     try {
       body = await readJson(req);
@@ -193,6 +289,7 @@ function middleware(runner) {
 export default function scenariosPlugin(options = {}) {
   const runner = createScenarioRunner(options);
   const base = "/api/scenarios";
+  if (!options.spawn) void runner.adopt().catch(() => {}); // a dev-server restart must not lose track of a running campaign
   return {
     name: "rom-scenarios",
     configureServer(server) {

@@ -7,12 +7,13 @@ const LIST = [{ id: "thermal_runaway", label: "Thermal Runaway" }, { id: "transp
 const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
 
 /** A fake server: records calls, status is whatever the test sets. */
-function fakeServer({ runReply = reply(202, {}), initial = { status: "idle" } } = {}) {
-  const s = { calls: [], status: initial, runReply };
+function fakeServer({ runReply = reply(202, {}), initial = { status: "idle" }, stopReply = reply(202, {}) } = {}) {
+  const s = { calls: [], status: initial, runReply, stopReply };
   s.fetch = async (url, init = {}) => {
     s.calls.push({ url, method: init.method || "GET", body: init.body });
     if (url.endsWith("/status")) return reply(200, s.status);
     if (url.endsWith("/run")) return s.runReply;
+    if (url.endsWith("/stop")) return s.stopReply;
     return reply(200, { scenarios: LIST });
   };
   return s;
@@ -109,5 +110,73 @@ test("no scenario API (static build) is reported, not faked", async () => {
   await c.init();
   assert.equal(c.getState().unavailable, true);
   assert.deepEqual(c.getState().scenarios, []);
+  c.dispose();
+});
+
+const stops = (srv) => srv.calls.filter((x) => x.url.endsWith("/stop"));
+
+test("Stop is disabled when idle and enabled while a scenario runs", async () => {
+  const srv = fakeServer();
+  const c = ctl(srv);
+  await c.init();
+  assert.equal(c.getState().canStop, false);
+  await c.stop();
+  assert.equal(stops(srv).length, 0, "nothing is sent while idle");
+  srv.status = { status: "running", scenario: "thermal_runaway" };
+  await c.run();
+  assert.equal(c.getState().canStop, true);
+  c.dispose();
+});
+
+test("Stop posts to /stop, shows stopping (Run stays disabled), then stopped, and the controls unlock", async () => {
+  const srv = fakeServer();
+  const c = ctl(srv);
+  await c.init();
+  srv.status = { status: "running", scenario: "thermal_runaway" };
+  await c.run();
+  srv.status = { status: "stopping", scenario: "thermal_runaway" };
+  await c.stop();
+  assert.equal(stops(srv)[0].method, "POST");
+  assert.equal(c.getState().status.status, "stopping");
+  assert.equal(c.getState().busy, true, "run/selector stay locked while stopping");
+  assert.equal(c.getState().canStop, false, "Stop cannot be clicked again");
+  await c.stop();
+  await c.run();
+  assert.equal(stops(srv).length, 1, "no repeated stop");
+  assert.equal(srv.calls.filter((x) => x.url.endsWith("/run")).length, 1, "no run while stopping");
+  await tick();
+  assert.equal(c.getState().status.status, "stopping", "keeps polling while stopping");
+  srv.status = { status: "stopped", scenario: "thermal_runaway", exitCode: null };
+  await tick();
+  const st = c.getState();
+  assert.equal(st.status.status, "stopped");
+  assert.equal(st.busy, false);
+  assert.equal(st.canStop, false);
+  const n = srv.calls.length;
+  await tick(30);
+  assert.equal(srv.calls.length, n, "polling ends at the terminal state");
+  c.dispose();
+});
+
+test("Stop refused because the campaign just finished: the message is shown and the real status wins", async () => {
+  const srv = fakeServer({ stopReply: reply(409, { error: "No scenario is currently running" }) });
+  const c = ctl(srv);
+  await c.init();
+  srv.status = { status: "running", scenario: "thermal_runaway" };
+  await c.run();
+  srv.status = { status: "completed", scenario: "thermal_runaway", exitCode: 0 };
+  await c.stop();
+  assert.match(c.getState().error, /No scenario is currently running/);
+  assert.equal(c.getState().status.status, "completed");
+  assert.equal(c.getState().busy, false);
+  c.dispose();
+});
+
+test("a page opened while a campaign is stopping keeps polling and offers no Stop", async () => {
+  const srv = fakeServer({ initial: { status: "stopping", scenario: "transport_drop" } });
+  const c = ctl(srv);
+  await c.init();
+  assert.equal(c.getState().busy, true);
+  assert.equal(c.getState().canStop, false);
   c.dispose();
 });

@@ -84,11 +84,17 @@ Collector judges the run and writes an evidence record.
 2. The selector and button lock; the status line shows `Running: <scenario>`. Live telemetry keeps updating.
 3. When the process ends: `Scenario completed (exit code 0)` or `Scenario failed (exit code N)` with the tail of its output.
    The exit code only says the injector finished; the PASS / FAIL verdict is the evidence record (Safety Evidence).
+4. **Stop** (enabled only while a scenario runs) interrupts the real campaign: `Stopping: <scenario>`, then `Scenario stopped: <scenario>`.
+   The server sends SIGINT to exactly that campaign container (named `rom-dashboard-campaign-<id>-<random>`, labelled
+   `rom.dashboard.campaign`), so the fault injector clears its injected faults and logs `campaign_end: interrupted`; only if it
+   has not exited after 5 s is that same container force-killed and removed. The rest of the stack is untouched. "Stopped" is an
+   orchestration status, never PASS: the Evidence Collector records an interrupted run as INCONCLUSIVE ("campaign interrupted").
 
 Rules enforced by the server (`vite/scenarios.mjs`, tested in `vite/scenarios.test.mjs`): only the 15 IDs below are accepted
 (the browser sends an ID, never a command; anything else gets `400`); one campaign at a time (`409` for a second request);
-`503` when the stack is not healthy, i.e. the collector does not answer, the Guardian is not `MONITORING`, or a campaign is
-still open in the collector (an overlapping run would be judged INCONCLUSIVE). Run them one after another, the two we timed took 30 s and 75 s. API: `GET /api/scenarios`, `GET /api/scenarios/status`, `POST /api/scenarios/run {"scenario":"<id>"}`.
+`409` also while a stop is in progress, `503` when the stack is not healthy, i.e. the collector does not answer, the Guardian is not `MONITORING`, or a campaign is
+still open in the collector (an overlapping run would be judged INCONCLUSIVE). Run them one after another, the two we timed took 30 s and 75 s. API: `GET /api/scenarios`, `GET /api/scenarios/status` (`idle`, `running`, `stopping`, `completed`, `failed`, `stopped`),
+`POST /api/scenarios/run {"scenario":"<id>"}`, `POST /api/scenarios/stop` (no body; `409` if nothing is running).
 It exists only on the dev server (`make dashboard` / `npm run dev`), not in a static build.
 
 | UI label | Campaign ID | Purpose (from the campaign definition) |
@@ -164,7 +170,7 @@ Docker Compose, which produces the same Evidence Collector artifacts.
 |---|---|
 | `make dashboard`: port 5173 in use | `make dashboard-stop`, or stop whatever holds the port (`ss -ltnp \| grep 5173`) |
 | `make dashboard`: cannot talk to Docker / permission denied on docker.sock | add your user to the `docker` group and log in again |
-| `EACCES` in `node_modules` / `dist` when the container starts | an earlier container ran as root and created them: `sudo chown -R $USER node_modules dist` in `services/dashboard` |
+| `EACCES` in `node_modules` / `dist` when the container starts | a container that ran as root created files there earlier: `sudo chown -R $USER node_modules dist` in `services/dashboard` (Vite's cache itself lives inside the dashboard container, not in `node_modules/.vite`) |
 | red "Evidence Collector unreachable", `curl localhost:8082/health` fails | the stack is not running: `make guardian`; look at `docker compose -f infra/docker-compose.yml --profile tools ps` |
 | `localhost:7690/sovd/...` fails | `opensovd` / `dfm` not up (or still building): `make sovd`, `make logs` |
 | Run Scenario: `503 Runtime stack is not healthy` | the message names the cause: collector down, Guardian not `MONITORING` yet (wait a few seconds after a campaign), or a campaign still open |

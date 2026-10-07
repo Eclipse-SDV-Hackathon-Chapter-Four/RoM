@@ -62,6 +62,7 @@ h1, h2, p, dl, dd { margin: 0; }
 .scenario-select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--card-border); background: var(--card); color: var(--text); max-width: 100%; }
 .scenario-select:disabled { opacity: 0.5; cursor: not-allowed; }
 .scenario-select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.scenario-btn.stop:not(:disabled) { border-color: var(--amber); color: #ffd98a; }
 .scenario-status { font-size: 13px; color: var(--muted); }
 .scenario-status.running { color: #ffd98a; }
 .scenario-status.ok { color: #6fe3a0; }

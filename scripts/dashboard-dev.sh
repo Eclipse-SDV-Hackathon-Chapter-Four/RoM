@@ -44,7 +44,7 @@ mounts=(-v "$ROOT:$ROOT")
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" --network host \
   --user "$(id -u):$(id -g)" --group-add "$(stat -c %g "$SOCK")" \
-  -e HOME=/tmp -e npm_config_cache=/tmp/.npm \
+  -e HOME=/tmp -e npm_config_cache=/tmp/.npm -e VITE_CACHE_DIR=/tmp/vite-cache \
   -e VITE_DASHBOARD_SOURCE=live -e VITE_EVIDENCE_API_BASE=/evidence-api \
   -e EVIDENCE_API_TARGET="${EVIDENCE_API_TARGET:-http://localhost:8082}" -e ROM_RUNTIME_REPO="$RUNTIME" \
   "${mounts[@]}" -v "$SOCK:$SOCK" -w "$ROOT/services/dashboard" \

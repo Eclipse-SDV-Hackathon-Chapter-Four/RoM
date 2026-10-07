@@ -10,6 +10,8 @@ export interface Scenario {
 export type ScenarioStatus =
   | { status: "idle" }
   | { status: "running"; scenario: string; startedAt?: string }
+  | { status: "stopping"; scenario: string; startedAt?: string }
+  | { status: "stopped"; scenario: string; exitCode: null; finishedAt?: string; note?: string }
   | { status: "completed"; scenario: string; exitCode: number; finishedAt?: string }
   | { status: "failed"; scenario: string; exitCode: number; error?: string; finishedAt?: string };
 
@@ -48,13 +50,23 @@ export async function runScenario(id: string, base = SCENARIO_API_BASE, fetchFn:
   throw new Error(`${typeof body.error === "string" ? body.error : `HTTP ${res.status}`}${detail}`);
 }
 
+/** Asks the server to stop the campaign it is running (it takes no container or id). A refusal is thrown with the server's message. */
+export async function stopScenario(base = SCENARIO_API_BASE, fetchFn: FetchFn = fetch): Promise<void> {
+  const res = await fetchFn(`${base}/stop`, { method: "POST" });
+  if (res.status === 202) return;
+  const body = await json(res);
+  throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
+}
+
 export interface ScenarioViewState {
   scenarios: Scenario[];
   /** The id chosen in the dropdown. */
   selected: string;
   status: ScenarioStatus;
-  /** Starting, or the server says running: the selector and the button stay disabled. */
+  /** Starting, running or stopping: the selector and the Run button stay disabled. */
   busy: boolean;
+  /** Stop may be clicked: a campaign is running and no stop is in flight. */
+  canStop: boolean;
   /** The last request failed (service missing, refused, ...). */
   error: string | null;
   /** The scenario API could not be reached at all (static build, server without the plugin). */
@@ -66,11 +78,12 @@ export interface ScenarioViewState {
  * scenario runs, and never starts one on its own: only run() does, and only once at a time.
  */
 export class ScenarioController {
-  private state: ScenarioViewState = { scenarios: [], selected: "", status: { status: "idle" }, busy: false, error: null, unavailable: false };
+  private state: ScenarioViewState = { scenarios: [], selected: "", status: { status: "idle" }, busy: false, canStop: false, error: null, unavailable: false };
   private listeners = new Set<(s: ScenarioViewState) => void>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private starting = false;
+  private stopping = false;
 
   private readonly base: string;
   private readonly fetchFn: FetchFn;
@@ -110,8 +123,9 @@ export class ScenarioController {
       const status = await getScenarioStatus(this.base, this.fetchFn);
       const current = status.status === "idle" ? "" : status.scenario;
       const preferred = scenarios.find((s) => s.id === "thermal_runaway")?.id ?? scenarios[0]?.id ?? "";
-      this.set({ scenarios, selected: scenarios.some((s) => s.id === current) ? current : preferred, status, busy: status.status === "running", unavailable: false, error: null });
-      if (status.status === "running") this.poll();
+      const active = status.status === "running" || status.status === "stopping";
+      this.set({ scenarios, selected: scenarios.some((s) => s.id === current) ? current : preferred, status, busy: active, canStop: status.status === "running", unavailable: false, error: null });
+      if (active) this.poll();
     } catch (e) {
       this.set({ unavailable: true, error: e instanceof Error ? e.message : String(e) });
     }
@@ -125,12 +139,39 @@ export class ScenarioController {
     this.set({ busy: true, error: null });
     try {
       await runScenario(id, this.base, this.fetchFn);
-      this.set({ status: { status: "running", scenario: id } });
+      this.set({ status: { status: "running", scenario: id }, canStop: true });
       this.poll();
     } catch (e) {
-      this.set({ busy: false, error: e instanceof Error ? e.message : String(e) });
+      this.set({ busy: false, canStop: false, error: e instanceof Error ? e.message : String(e) });
     } finally {
       this.starting = false;
+    }
+  }
+
+  /** Stops the running campaign for real (server side). Only one stop at a time; polling goes on until the terminal state. */
+  async stop(): Promise<void> {
+    if (!this.state.canStop || this.stopping) return;
+    this.stopping = true;
+    const scenario = this.state.status.status === "idle" ? this.state.selected : this.state.status.scenario;
+    this.set({ canStop: false, error: null });
+    try {
+      await stopScenario(this.base, this.fetchFn);
+      this.set({ status: { status: "stopping", scenario } });
+      this.poll();
+    } catch (e) {
+      // e.g. the campaign finished a moment ago: show the message and let one status read decide what is true now
+      this.set({ error: e instanceof Error ? e.message : String(e) });
+      try {
+        const status = await getScenarioStatus(this.base, this.fetchFn);
+        const active = status.status === "running" || status.status === "stopping";
+        this.set({ status, busy: active, canStop: status.status === "running" });
+        if (active) this.poll();
+        else this.onFinished?.(status);
+      } catch {
+        // keep the last known state; the next poll will correct it
+      }
+    } finally {
+      this.stopping = false;
     }
   }
 
@@ -140,12 +181,12 @@ export class ScenarioController {
       this.timer = null;
       try {
         const status = await getScenarioStatus(this.base, this.fetchFn);
-        if (status.status === "running") {
-          this.set({ status });
+        if (status.status === "running" || status.status === "stopping") {
+          this.set({ status, canStop: status.status === "running" && !this.stopping });
           if (!this.disposed) this.timer = setTimeout(tick, this.pollMs);
           return;
         }
-        this.set({ status, busy: false });
+        this.set({ status, busy: false, canStop: false });
         this.onFinished?.(status);
       } catch (e) {
         // transient: keep polling, the run itself is not affected

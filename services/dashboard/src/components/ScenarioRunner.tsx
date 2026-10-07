@@ -4,8 +4,8 @@ import { ScenarioController } from "../data/scenarioApi";
 /**
  * Scenario [dropdown] [Run Scenario]: starts one real fault campaign of the running stack through the local dev server.
  * It does not touch the telemetry subscription: the dashboard keeps polling while a campaign runs, and what changes on
- * screen is what the real stack publishes. The outcome shown is the process exit status only; PASS/FAIL verdicts live in
- * the Evidence Collector (Safety Evidence tab).
+ * screen is what the real stack publishes. The outcome shown is the process status only (exit code, or "stopped" after Stop,
+ * which interrupts the real campaign); PASS/FAIL verdicts live in the Evidence Collector (Safety Evidence tab).
  */
 export default function ScenarioRunner() {
   const [ctl] = useState(() => new ScenarioController());
@@ -20,11 +20,17 @@ export default function ScenarioRunner() {
 
   let line = "Idle";
   let tone = "idle";
-  if (s.busy && st.status !== "running") {
+  if (st.status === "stopping") {
+    line = `Stopping: ${label(st.scenario)}`;
+    tone = "running";
+  } else if (s.busy && st.status !== "running") {
     line = "Starting…";
     tone = "running";
   } else if (st.status === "running") {
     line = `Running: ${label(st.scenario)}`;
+    tone = "running";
+  } else if (st.status === "stopped") {
+    line = `Scenario stopped: ${label(st.scenario)}`;
     tone = "running";
   } else if (st.status === "completed") {
     line = `Scenario completed: ${label(st.scenario)} (exit code ${st.exitCode})`;
@@ -53,8 +59,12 @@ export default function ScenarioRunner() {
       <button type="button" className="scenario-btn" disabled={s.busy || !s.selected} onClick={() => void ctl.run()}>
         {s.busy ? "Running…" : "Run Scenario"}
       </button>
+      <button type="button" className="scenario-btn stop" disabled={!s.canStop} onClick={() => void ctl.stop()}>
+        {st.status === "stopping" ? "Stopping…" : "Stop"}
+      </button>
       <span className={`scenario-status ${tone}`} role="status" aria-live="polite">{line}</span>
       {s.error && <span className="scenario-status bad" role="alert">{s.error}</span>}
+      {st.status === "stopped" && st.note && <span className="scenario-status scenario-detail">{st.note}</span>}
       {st.status === "failed" && st.error && <span className="scenario-status bad scenario-detail">{st.error}</span>}
     </div>
   );

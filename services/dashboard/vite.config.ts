@@ -15,6 +15,9 @@ export default defineConfig(({ mode }) => {
     },
   };
   return {
+    // VITE_CACHE_DIR: scripts/dashboard-dev.sh keeps Vite's optimizer cache inside the container, so another process (or a
+    // container running as root) that shares the checkout cannot leave files in node_modules/.vite that this one cannot replace
+    cacheDir: env.VITE_CACHE_DIR || undefined,
     // /evidence-report/{meta.json,report.html}: the generated report of the newest completed final run (runs/<id>/)
     // /api/scenarios/{,status,run}: starts ONE bundled fault campaign of the running stack (ROM_RUNTIME_REPO), local demo only
     plugins: [react(), evidenceReport(), scenarios()],
