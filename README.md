@@ -7,6 +7,38 @@ Sensor / simulator → KUKSA Databroker → VSS uProtocol Client → (uProtocol 
 and Guardian → (uProtocol) → DFM fault records (Eclipse OpenSOVD fault-lib).
 The guardian never reads the databroker directly. Everything runs in Docker; you only need `docker compose` and `make`.
 
+## Demo quick start
+
+```
+Terminal 1:   make images
+              make guardian            # stays attached to the guardian log; leave it running
+
+Terminal 2:   make dashboard           # run when `curl -s localhost:8082/health` shows "guardian_state":"MONITORING"
+
+Browser:      http://localhost:5173/#/live
+
+Run a scenario:    pick "Thermal Runaway"  ->  Run Scenario   (Stop button ends it early)
+Refresh evidence:  make evidence-snapshot
+Safety report:     http://localhost:5173/#/evidence           (press Rescan after a new snapshot)
+
+Shutdown:     make dashboard-stop
+              make down
+```
+
+### If Meryem is unavailable (tonight's checklist)
+
+1. `docker ps` works? (if not: Docker is not running, or `sudo usermod -aG docker $USER` and log in again) · `df -h /` has 10 GB+ free?
+2. Stack down? `make guardian` (terminal 1). Wait for `curl -s localhost:8082/health` -> `"guardian_state":"MONITORING"`.
+3. Dashboard down? `make dashboard` (terminal 2), then open `http://localhost:5173/#/live`.
+4. Scenario button does nothing / error: read the red message (`503` = stack not calm, wait 10 s; `409` = one is still running, press Stop).
+   Still broken -> `make campaign C=thermal_runaway` in a terminal; the dashboard still shows the reaction.
+5. Safety Evidence empty or old: `make evidence-snapshot`, then **Rescan**. Still nothing: open `http://localhost:8082/ui/`.
+6. Something unknown: `docker compose -f infra/docker-compose.yml --profile tools ps` and `... logs --tail 50 guardian evidence-collector`.
+7. Reset: `make dashboard-stop && make down`, then start again from step 2. This keeps all saved evidence; never delete evidence to make it look green (a stopped scenario is INCONCLUSIVE on purpose).
+8. After a `git pull`: `make images` first, otherwise the containers are the old ones.
+
+Everything in detail (architecture, file map, all 20 scenarios, verdicts, demo script, troubleshooting): [`services/dashboard/README.md`](services/dashboard/README.md).
+
 ## Repository layout
 
 Every component is its own pip package; services that run under Ankaios have their own image
@@ -46,17 +78,8 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every PR: `m
 
 The dashboard shows the running stack live (**Live Monitoring**), starts and stops the real fault campaigns from a dropdown
 (**Run Scenario / Stop**, 20 bundled campaigns, nothing is simulated in the browser) and shows the Evidence Collector's report
-of a saved run (**Safety Evidence**). Only Docker is needed, no Node.js:
-
-```bash
-make images && make guardian     # terminal 1: the stack (stays attached to the guardian log)
-make dashboard                   # terminal 2: http://localhost:5173/#/live  and  /#/evidence
-make evidence-snapshot           # after some scenarios: saves runs/<timestamp>/ (gitignored) for Safety Evidence
-make dashboard-stop && make down # stop
-```
-
-The full runbook (architecture, file map, every command, the 20 scenarios, verdicts, demo script, hardware vs simulator-only,
-troubleshooting, emergency checklist): [`services/dashboard/README.md`](services/dashboard/README.md).
+of a saved run (**Safety Evidence**). Only Docker is needed, no Node.js. Commands: [Demo quick start](#demo-quick-start) above,
+everything else in [`services/dashboard/README.md`](services/dashboard/README.md).
 
 ## All commands
 

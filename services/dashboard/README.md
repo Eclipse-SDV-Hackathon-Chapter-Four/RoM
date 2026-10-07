@@ -4,6 +4,38 @@ This is the guide for running, demoing and debugging the whole thing without ask
 against the real stack; commands are copy/paste. Below the runbook (from [Developer reference](#developer-reference-mock-mode-live-data-model))
 is the technical description of the dashboard's data model.
 
+## Demo quick start
+
+```
+Terminal 1:   make images
+              make guardian            # stays attached to the guardian log; leave it running
+
+Terminal 2:   make dashboard           # run when `curl -s localhost:8082/health` shows "guardian_state":"MONITORING"
+
+Browser:      http://localhost:5173/#/live
+
+Run a scenario:    pick "Thermal Runaway"  ->  Run Scenario   (Stop button ends it early)
+Refresh evidence:  make evidence-snapshot
+Safety report:     http://localhost:5173/#/evidence           (press Rescan after a new snapshot)
+
+Shutdown:     make dashboard-stop
+              make down
+```
+
+### If Meryem is unavailable (tonight's checklist)
+
+1. `docker ps` works? (if not: Docker is not running, or `sudo usermod -aG docker $USER` and log in again) · `df -h /` has 10 GB+ free?
+2. Stack down? `make guardian` (terminal 1). Wait for `curl -s localhost:8082/health` -> `"guardian_state":"MONITORING"`.
+3. Dashboard down? `make dashboard` (terminal 2), then open `http://localhost:5173/#/live`.
+4. Scenario button does nothing / error: read the red message (`503` = stack not calm, wait 10 s; `409` = one is still running, press Stop).
+   Still broken -> `make campaign C=thermal_runaway` in a terminal; the dashboard still shows the reaction.
+5. Safety Evidence empty or old: `make evidence-snapshot`, then **Rescan**. Still nothing: open `http://localhost:8082/ui/`.
+6. Something unknown: `docker compose -f infra/docker-compose.yml --profile tools ps` and `... logs --tail 50 guardian evidence-collector`.
+7. Reset: `make dashboard-stop && make down`, then start again from step 2. This keeps all saved evidence; never delete evidence to make it look green (a stopped scenario is INCONCLUSIVE on purpose).
+8. After a `git pull`: `make images` first, otherwise the containers are the old ones.
+
+Everything in detail (architecture, file map, all 20 scenarios, verdicts, demo script, troubleshooting): the sections below.
+
 **Contents**
 1. [What this project does](#1-what-this-project-does) · 2. [Architecture](#2-architecture) · 3. [Where is what](#3-where-is-what) ·
 4. [Prerequisites](#4-prerequisites) · 5. [Quick start (fresh clone)](#5-quick-start-fresh-clone) · 6. [Startup, step by step](#6-startup-step-by-step) ·
