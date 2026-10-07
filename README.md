@@ -385,7 +385,7 @@ flowchart LR
 #### 4. Diagnostics
 - [x] DFM fault records for every faulted scenario (fault-lib `dfm_bin`, catalog `battery_guardian`, see `services/dfm`)
 - [ ] Expose diagnostics through Eclipse OpenSOVD
-- [ ] Diagnostic faults: delayed DFM write · partial OpenSOVD visibility
+- [x] Diagnostic faults: delayed DFM write · partial OpenSOVD visibility (DFM fault API `write_delay` / `drop_write`, campaigns `dfm_write_delay`, `opensovd_partial_visibility` with `expected_verdict: FAIL`)
 
 #### 5. Evidence & verdicts
 - [x] Hazard and safety-goal catalog linked to each campaign (`services/evidence-collector/evidence_collector/safety_case.yaml`, checked against every bundled campaign)

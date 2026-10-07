@@ -71,7 +71,8 @@ class Runner:
         self.log.run_id = c.run_id
         status, error = "completed", None
         self.log.log("campaign_start", hazard=c.hazard, safety_goal=c.safety_goal, expected_state=c.expected_state,
-                     expected_faults=c.expected_faults, max_detect_ms=c.max_detect_ms, seed=c.seed,
+                     expected_faults=c.expected_faults, expected_verdict=c.expected_verdict,
+                     max_detect_ms=c.max_detect_ms, seed=c.seed,
                      duration_s=c.duration_s,
                      baseline=c.baseline, faults=[f.as_dict() for f in c.faults])
         try:
