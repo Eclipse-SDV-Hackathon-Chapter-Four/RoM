@@ -8,6 +8,8 @@ from typing import Any, Optional
 
 # --- VSS (KUKSA) -----------------------------------------------------------
 VSS_BATTERY_TEMP = "Vehicle.Powertrain.TractionBattery.Temperature.Max"
+# Custom overlay (infra/vss/rom_cells.json): one temperature per battery cell, cells are numbered from 1.
+VSS_CELL_TEMPS = tuple(f"Vehicle.Powertrain.TractionBattery.Cells.Cell{i}.Temperature" for i in range(1, 5))
 
 # --- MQTT topics -----------------------------------------------------------
 TOPIC_SENSOR_TEMP = "rom/sensor/battery/temp"          # QoS 0, no retain
