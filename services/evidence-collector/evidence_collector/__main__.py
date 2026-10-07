@@ -1,5 +1,5 @@
 # Made with Claude (Claude Code, Anthropic)
-"""RoM Evidence Collector — placeholder, not implemented yet (see ROADMAP.md).
+"""RoM Evidence Collector — placeholder, not implemented yet (see README.md#roadmap).
 
 TODO:
 - collect per run_id: campaign (hazard, safety goal, injected fault), guardian detection and
@@ -12,7 +12,7 @@ from rom_common import jsonlog
 
 def main():
     # TODO: implement, see the module docstring and evidence-collector/README.md
-    jsonlog.get_logger("evidence-collector").log("not_implemented", roadmap="ROADMAP.md")
+    jsonlog.get_logger("evidence-collector").log("not_implemented", roadmap="README.md#roadmap")
 
 
 if __name__ == "__main__":

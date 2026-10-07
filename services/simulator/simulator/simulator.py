@@ -60,7 +60,7 @@ def main(argv: Optional[list] = None) -> None:
     try:
         run(lambda t: kuksa.set_temp(client, t), log, a.hz, a.period, a.min_c, a.max_c, a.duration)
     finally:
-        client.close()
+        client.disconnect()
 
 
 if __name__ == "__main__":

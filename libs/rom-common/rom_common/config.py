@@ -36,8 +36,9 @@ class Thresholds:
 
 
 def thresholds() -> Thresholds:
-    """Guardian thresholds, overridable via env. 38/45 degC are conservative supervisory demo defaults
-    (same as services/guardian), not universal limits: production values are manufacturer, cell and pack specific."""
+    """Guardian thresholds (the single source: services/guardian reads them from here), overridable via env.
+    38/45 degC are conservative supervisory demo defaults, not universal limits: production values are
+    manufacturer, cell and pack specific."""
     return Thresholds(
         warn_c=float(_env("WARN_C", "38.0")),
         crit_c=float(_env("CRIT_C", "45.0")),

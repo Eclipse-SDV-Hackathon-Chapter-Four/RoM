@@ -16,7 +16,7 @@ Every component is its own pip package; services that run under Ankaios have the
 | `services/vss-uprotocol-client` | `vss_uprotocol_client` | ✅ | KUKSA Databroker → uProtocol |
 | `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (uProtocol input; display command out over MQTT) |
 | `services/simulator` | `simulator` | dev image | sine-wave temperature into KUKSA |
-| `services/adapter` | `adapter` | dev image | MQTT → KUKSA |
+| `services/adapter` | `adapter` | dev image (`make hw`) | MQTT → KUKSA |
 | `services/fault-injector` | `fault_injector` | ✅ TODO | Fault Campaign Runner |
 | `services/dfm` | `dfm` | ✅ TODO | Diagnostic Fault Manager |
 | `services/opensovd` | – | ✅ TODO | Eclipse OpenSOVD server |
@@ -41,6 +41,8 @@ make down                        # stop everything
 | `make up` | start databroker + mosquitto in the background |
 | `make guardian` | databroker + simulator + vss-uprotocol-client + guardian, follow guardian logs |
 | `make images` | build all service images `localhost/rom/<service>:dev` |
+| `make hw` | hardware run: AZ3166 → mosquitto → adapter → databroker → vss-uprotocol-client → guardian (no simulator), follow adapter + guardian logs |
+| `make adapter` | MQTT → KUKSA adapter in the foreground |
 | `make sim` | sine-wave simulator into KUKSA (foreground) |
 | `make sim-up` | databroker + simulator in the background |
 | `make kuksa` | interactive kuksa-client shell (`getValue Vehicle.Powertrain.TractionBattery.Temperature.Max`) |
@@ -70,6 +72,7 @@ pytest -q
 | `MQTT_HOST` / `MQTT_PORT` | `localhost` / `1883` | all |
 | `SIM_HZ`, `SIM_PERIOD_S`, `SIM_MIN_C`, `SIM_MAX_C` | `2`, `120`, `30`, `69` | simulator |
 | `WARN_C`, `CRIT_C` | `38`, `45` | guardian |
+| `STALE_MS`, `STUCK_S`, `MIN_PLAUSIBLE_C`, `MAX_PLAUSIBLE_C` | `2000`, `10`, `-40`, `150` | guardian (`STALE_MS` is also the uProtocol TTL) |
 | `VSS_SOURCE_PATH` | `Vehicle.Powertrain.TractionBattery.Temperature.Max` | vss-uprotocol-client |
 | `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_MODE`, `ZENOH_CONNECT`, `ZENOH_LISTEN` | `rom-vehicle`, `zenoh`, `peer`, –, – | vss-uprotocol-client, guardian |
 
@@ -81,7 +84,7 @@ override them with the environment variables above (the same defaults apply in `
 
 `CLEAR` (no data yet) → `MONITORING` → `WARNING` (≥ `WARN_C`) → `CRITICAL` (≥ `CRIT_C`) → `MITIGATING`
 (→ `CRITICAL` "mitigation failed" if still hot after 5 s). `SENSOR_FAULT` if the signal is stale (2 s),
-stuck (10 s) or out of range (−40…100 °C).
+stuck (10 s) or out of range (−40…150 °C).
 
 ## AZ3166 hardware node: sensor telemetry over MQTT
 
@@ -196,3 +199,91 @@ mosquitto_pub -h <broker-lan-ip> -t "ThreadXAZ3166/incoming" -m "get"
 **4. Prefer a GUI?** Install [MQTT Explorer](https://mqtt-explorer.com), add a connection with the broker host above, port `1883`, no credentials, then expand the `rom/sensor/battery` topic tree. Readings update live as a tree view — no commands needed.
 
 **If nothing comes through:** confirm you're on the same Wi-Fi as the broker (both the 2.4GHz and 5GHz bands of the same AP usually reach it) and that the host IP above is still current — if the broker runs on someone's laptop, a DHCP lease change will move it.
+
+## Roadmap
+
+**Idea:** a portable *Safety Evidence Factory* around the Battery Thermal Guardian. Every injected fault
+must leave a traceable trail: **hazard → safety goal → injected fault → detection → mitigation → verdict**.
+
+### Target architecture
+
+Implemented today: the sensor path AZ3166 → MQTT → adapter → KUKSA → uProtocol → Guardian, and the display
+feedback path Guardian → MQTT `rom/actuator/display/cmd` → AZ3166 OLED. The display command does **not** travel
+over uProtocol. Fault Campaign Runner, CAN provider, DFM, OpenSOVD, Evidence Collector and Ankaios are still planned.
+
+```mermaid
+flowchart LR
+  HW[AZ3166 + Eclipse ThreadX] -->|MQTT| AD[MQTT→KUKSA adapter]
+  ASC[CAN .asc replay] --> CANP[KUKSA CAN Provider]
+  SIM[Simulator] --> KDB
+  AD --> KDB[(KUKSA Databroker)]
+  CANP --> KDB
+  KDB --> PUB[VSS uProtocol Publisher]
+  FI[Fault Campaign Runner] -->|inject| PUB
+  PUB -->|uProtocol / Zenoh| G[Battery Thermal Guardian]
+  G -->|MQTT rom/actuator/display/cmd| DISP[AZ3166 OLED, same board as the sensor]
+  G --> DFM[DFM fault records]
+  DFM --> SOVD[Eclipse OpenSOVD]
+  SOVD --> EV[Evidence Collector → verdict report]
+  ANK[Eclipse Ankaios on AutoSD] -. orchestrates .-> PUB & G & SOVD & EV
+```
+
+### Done
+
+- [x] KUKSA Databroker + simulator as the nominal signal source
+- [x] VSS uProtocol Publisher (Zenoh transport following the current up-spec)
+- [x] Guardian consumes VSS **only via uProtocol** — never reads the Databroker
+- [x] Guardian state machine: CLEAR → MONITORING → WARNING → CRITICAL → MITIGATING, plus SENSOR_FAULT (stale / stuck / out of range)
+- [x] MQTT → KUKSA adapter with contract validation and sequence-gap detection
+- [x] Eclipse ThreadX firmware on AZ3166 publishing sensor telemetry over MQTT
+- [x] Containerized dev stack, `make` shortcuts, unit tests per component
+- [x] uProtocol extracted into a reusable library (`libs/rom-uprotocol`); every component is its own pip package, services have their own image (ready for Ankaios)
+- [x] Placeholder services with their own images: Fault Campaign Runner, DFM, OpenSOVD, Evidence Collector (build, start, log `not_implemented`)
+- [x] Guardian logs the uProtocol `msg_id` / `seq` that caused each state change
+- [x] AZ3166 firmware reconnects to the MQTT broker automatically (Last Will `offline`, retained `online`)
+
+### Next
+
+#### 1. Sources
+- [x] Bring the ThreadX firmware into `main` and align it with the sensor contract — real hardware end-to-end
+- [ ] KUKSA CAN Provider with `.asc` replay as an additional source
+- [x] Guardian state shown on the device display (display command over MQTT, `G:NO LINK` after 5 s)
+
+#### 2. Fault campaigns
+- [ ] Fault Campaign Runner inside the uProtocol publisher, campaigns described in YAML with a seed (deterministic, replayable)
+- [ ] Transport faults: delay · duplicate · drop · reorder
+- [ ] Signal faults: stuck · spike · drift · out-of-range
+- [ ] Source faults: dropout · replay interruption
+- [ ] Combined multi-fault scenarios
+
+#### 3. Guardian
+- [ ] Publish state, heartbeat, fault and mitigation events over uProtocol
+- [ ] Detect duplicate / reordered messages and implausible rate of change
+- [ ] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event
+
+#### 4. Diagnostics
+- [ ] DFM fault records for every faulted scenario
+- [ ] Expose diagnostics through Eclipse OpenSOVD
+- [ ] Diagnostic faults: delayed DFM write · partial OpenSOVD visibility
+
+#### 5. Evidence & verdicts
+- [ ] Hazard and safety-goal catalog linked to each campaign
+- [ ] Evidence Collector correlating campaign → events → diagnostics
+- [ ] Verdict per run: PASS / FAIL / INCONCLUSIVE, with detection latency and mitigation timing
+- [ ] Report covering all campaigns, failed scenarios included
+
+#### 6. Orchestration & platform
+- [ ] Eclipse Ankaios manages the final orchestrated run
+- [ ] Run the stack on Eclipse AutoSD
+- [ ] Remote reruns (Eclipse openDUT) with verdict consistency check
+
+#### 7. Blueprint & community
+- [ ] Reusable package another team can run with one command
+- [ ] CI pipeline running tests and campaigns on every PR
+- [ ] Upstream contribution: update `up-transport-zenoh-python` to zenoh 1.x and the current up-spec
+- [ ] SDV Blueprint proposal
+
+### How we work
+
+GitHub Issues per roadmap item · feature branches · PRs with one reviewer · CI on every PR ·
+JSON logs with correlation IDs as the raw material for evidence.

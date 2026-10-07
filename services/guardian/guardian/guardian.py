@@ -20,7 +20,7 @@ import sys
 import threading
 import time
 
-from rom_common import clock, jsonlog
+from rom_common import clock, config, jsonlog
 from rom_common.contracts import (CLEAR, CRITICAL, MONITORING, QOS_DISPLAY_CMD, SENSOR_FAULT, TOPIC_DISPLAY_CMD, WARNING,
                                   build_display_cmd)
 
@@ -28,11 +28,13 @@ MITIGATING = "MITIGATING"
 DISPLAY_PERIOD_S = 1.0  # re-publish the display command this often: fresh temp_c, and proof the guardian is alive
 TICK_S = 0.5
 
-WARN_C = float(os.getenv("WARN_C", 38.0))
-CRIT_C = float(os.getenv("CRIT_C", 45.0))
-MIN_C, MAX_C = -40, 100
-STALE_S = 2
-STUCK_S = 10
+# Thresholds come from rom_common.config (env: WARN_C, CRIT_C, STALE_MS, STUCK_S, MIN/MAX_PLAUSIBLE_C),
+# the same values the vss-uprotocol-client uses for the message TTL.
+_T = config.thresholds()
+WARN_C, CRIT_C = _T.warn_c, _T.crit_c
+MIN_C, MAX_C = _T.min_plausible_c, _T.max_plausible_c
+STALE_S = _T.stale_ms / 1000
+STUCK_S = _T.stuck_s
 MITIGATION_TIMEOUT_S = 5
 
 
@@ -91,7 +93,7 @@ SCENARIO = (
     + [44, 40, 36, 30]                # cooled down -> MONITORING
     + [None] * 4                      # sensor dropout -> SENSOR_FAULT
     + [30, 30.1]                      # back to normal
-    + [150]                           # implausible value -> SENSOR_FAULT
+    + [200]                           # implausible value -> SENSOR_FAULT
     + [30, 30.1]                      # back to normal
     + [42] * 12                       # stuck value -> SENSOR_FAULT
     + [30, 30.1]                      # back to normal

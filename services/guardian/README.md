@@ -6,7 +6,7 @@ Thermal-runaway early-warning state machine. Input comes **only over uProtocol**
 
 `CLEAR` → `MONITORING` → `WARNING` (≥ `WARN_C`) → `CRITICAL` (≥ `CRIT_C`) → `MITIGATING`
 (→ `CRITICAL` "mitigation failed" if still hot after 5 s), plus `SENSOR_FAULT` when the signal is
-stale (2 s), stuck (10 s) or out of range (−40…100 °C).
+stale (2 s), stuck (10 s) or out of range (−40…150 °C).
 
 ## Display output
 
@@ -29,6 +29,7 @@ Image: `services/guardian/Dockerfile` → `localhost/rom/guardian:dev` (env-only
 | Variable | Default |
 |---|---|
 | `WARN_C`, `CRIT_C` | `38`, `45` |
+| `STALE_MS`, `STUCK_S`, `MIN_PLAUSIBLE_C`, `MAX_PLAUSIBLE_C` | `2000`, `10`, `-40`, `150` |
 | `MQTT_HOST`, `MQTT_PORT` | `localhost`, `1883` |
 | `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_*` | see `libs/rom-uprotocol` |
 

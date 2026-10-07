@@ -4,4 +4,4 @@
 #       configured to read the fault records from services/dfm.
 FROM docker.io/library/busybox:1.36
 USER 1000
-CMD ["echo", "{\"component\":\"opensovd\",\"event\":\"not_implemented\",\"roadmap\":\"ROADMAP.md\"}"]
+CMD ["echo", "{\"component\":\"opensovd\",\"event\":\"not_implemented\",\"roadmap\":\"README.md#roadmap\"}"]
