@@ -77,7 +77,7 @@ hazard  ->  fault injection  ->  detection  ->  mitigation  ->  evidence  ->  ve
 
 * **Hybrid / hardware:** cell 1 = the physical AZ3166, cells 2-4 = simulator (`make hw`).
 * **Simulator-only:** the simulator provides all four cells (`make guardian`). This is enough for every campaign and for the
-  evidence; **the evidence runs recorded so far were simulator-only**, not hardware measurements.
+  evidence. The full Ankaios run is simulator-only; the campaigns were also run with the board as cell 1 (`make hw`).
 * The Guardian reads cells over uProtocol only, never from KUKSA. Its display command goes to the board over MQTT.
 * More detail: root [`README.md`](../../README.md) (architecture, Eclipse projects, settings, heartbeats, Guardian states) and the [hardware guide](../../docs/hardware-az3166.md).
 
