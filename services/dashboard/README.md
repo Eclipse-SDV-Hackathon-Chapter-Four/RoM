@@ -198,6 +198,7 @@ the Guardian, it displays what the Guardian published.
 | Recent Events | state changes and `FAULT` / `CLEARED` rows with the real code in the tooltip (e.g. `battery_guardian.cell3.signal_stuck`) |
 | System Flow | the pipeline diagram |
 | Scenario control | Run / Stop ([9](#9-run-and-stop-scenarios-from-the-ui)) |
+| Cell 1 switch | **AZ3166 sensor** or **Simulator**: exactly one of them writes cell 1 (and Max and the chip heartbeat). Switching tells the old writer to stop before the new one starts; a warning shows if both write. Needs the adapter running (`make guardian` and `make hw` start it) |
 
 Things to know:
 * **One bad cell does not mean a global fault.** Example `sensor_stuck_cell3`: before detection (10 s) Cell 3 still shows a
@@ -393,8 +394,13 @@ Before: stack healthy (`curl -s localhost:8082/health`), `make dashboard` up, a 
 
 **Simulator-only (no board needed, the normal demo):** `make guardian` + `make dashboard` as in [5](#5-quick-start-fresh-clone).
 The simulator writes all four cells (`SIM_CELLS` defaults to `1,2,3,4`), the Guardian requires only the `uprotocol` and
-`databroker` heartbeats. All campaigns and the evidence work in this mode. The only dashboard difference: the fixed `HW`
-badge / header text (see [8](#8-the-dashboard)) while the AZ3166 data source reads `NO HEARTBEAT`.
+`databroker` heartbeats. All campaigns and the evidence work in this mode. The adapter runs switched off, so the **Cell 1**
+switch can hand cell 1 to a connected board at any time and back again, without restarting anything.
+
+**Why one writer:** the simulator and the adapter write the same KUKSA paths for cell 1. If both write, the value jumps
+between the simulated and the real reading on every tick, through the whole chain (Guardian, DTCs, chart). The switch
+(`/api/cell1-source` → simulator `POST /cells`, adapter `POST /source`) makes that impossible. Campaigns that inject faults
+into cell 1 (e.g. `thermal_runaway`) need **Simulator**: the simulator cannot change a cell it does not write.
 
 **Hybrid / hardware (optional):** cell 1 = the AZ3166, cells 2-4 = simulator.
 `AZ3166 -> MQTT (Mosquitto, host port 1883) -> adapter -> KUKSA -> VSS uProtocol client -> uProtocol/Zenoh -> Guardian`, and

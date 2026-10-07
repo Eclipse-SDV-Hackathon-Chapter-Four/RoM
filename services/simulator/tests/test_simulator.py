@@ -218,6 +218,20 @@ def test_hybrid_mode_with_a_real_board_as_cell_1_leaves_cell_1_max_and_chip_to_t
         assert set(v) == {*VSS_CELL_TEMPS[1:], VSS_HEARTBEAT_SIMULATOR}
 
 
+
+def test_cells_switch_while_running_so_cell_1_has_one_writer():
+    session = simulator.Session()
+    sent = []
+    def sink(values):
+        sent.append(values)
+        session.set_cells([2, 3, 4] if len(sent) == 1 else [1, 2, 3, 4])   # board takes over, then gives back
+    clock = {"t": 0.0}
+    simulator.run(sink, JsonLogger("simulator", "r1", io.StringIO()), hz=1, period_s=4, duration_s=3,
+                  session=session, sleep=lambda s: clock.__setitem__("t", clock["t"] + s), monotonic=lambda: clock["t"])
+    owns_cell_1 = [VSS_CELL_TEMPS[0] in v and VSS_BATTERY_TEMP in v and VSS_HEARTBEAT_CHIP in v for v in sent]
+    assert owns_cell_1 == [True, False, True]
+    assert set(sent[1]) == {*VSS_CELL_TEMPS[1:], VSS_HEARTBEAT_SIMULATOR}
+
 def test_main_parses_sim_cells(monkeypatch):
     seen = {}
     monkeypatch.setattr(simulator.kuksa, "open_client", lambda: type("C", (), {"disconnect": lambda s: None})())

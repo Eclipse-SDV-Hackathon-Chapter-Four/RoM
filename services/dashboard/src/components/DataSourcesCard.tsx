@@ -11,7 +11,8 @@ const STATUS: Record<SourceStatus, { label: string; good: boolean; hint: string 
   NO_HEARTBEAT: { label: "NO HEARTBEAT", good: false, hint: "no heartbeat seen recently, state unknown" },
 };
 
-const cellsText = (ids: number[]) => (ids.length === 1 ? `Cell ${ids[0]}` : `Cells ${ids[0]}–${ids[ids.length - 1]}`);
+const cellsText = (ids: number[]) =>
+  ids.length === 0 ? "not used" : ids.length === 1 ? `Cell ${ids[0]}` : `Cells ${ids[0]}–${ids[ids.length - 1]}`;
 
 export default function DataSourcesCard({ sources }: { sources: SourceInfo[] }) {
   return (

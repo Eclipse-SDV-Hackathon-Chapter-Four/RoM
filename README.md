@@ -96,7 +96,8 @@ make down
 | `localhost:7690/sovd/v1/apps/battery_guardian/faults` | OpenSOVD faults |
 
 Full run under Ankaios (needs podman + Ankaios ≥ 1.0, about 25 min): `make final-run` → `runs/<id>/` with verdicts, summary,
-evidence bundle and logs. Real board: `make hw` ([hardware guide](docs/hardware-az3166.md)).
+evidence bundle and logs. Real board: `make hw`, or the **Cell 1** switch on the dashboard (AZ3166 sensor or simulator,
+never both) ([hardware guide](docs/hardware-az3166.md)).
 Dashboard, demo script and troubleshooting: [`services/dashboard`](services/dashboard/README.md).
 
 ## How the guardian decides
@@ -213,6 +214,7 @@ Every component is its own package; every service has its own image (`localhost/
 | `SIM_CELLS` | `1,2,3,4` | simulator (`2,3,4` when the real board is cell 1) |
 | `SIM_COOLING`, `SIM_COOLING_C_PER_S`, `SIM_COOLING_RELAX_C_PER_S` | unset (compose: `1`), `3`, `0.2` | simulator as the cooling actuator: cells cool while the guardian is `MITIGATING` ([simulator](services/simulator/README.md#cooling-the-simulator-as-the-cooling-actuator)) |
 | `ADAPTER_CELL` | `1` | adapter: which cell the board is |
+| `ADAPTER_ENABLED`, `ADAPTER_API_PORT` | `1` (`make guardian`: `0`), compose `8084` | adapter: writes the board's readings or not; cell 1 source switch API (`POST /source`) |
 | `HEARTBEAT_PERIOD_MS`, `HEARTBEAT_STALE_MS` | `500`, `1500` | client, adapter, simulator / guardian |
 | `CHIP_TIMEOUT_MS` | `1500` | adapter: no telemetry for this long reports the chip heartbeat as 0 |
 | `REQUIRED_HEARTBEATS` | `uprotocol,databroker` | guardian (`make hw`: `+adapter,chip`) |

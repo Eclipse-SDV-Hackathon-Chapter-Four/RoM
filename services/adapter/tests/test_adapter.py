@@ -170,3 +170,38 @@ def test_failed_heartbeat_write_is_logged_once_per_outage():
     state["down"] = True
     adapter.beat()
     assert [e["event"] for e in events()].count("kuksa_heartbeat_failed") == 2
+
+
+def test_disabled_adapter_writes_no_temperature_and_no_chip_heartbeat():
+    adapter, writes, events = make_adapter()
+    adapter.set_enabled(False)
+    adapter.handle(TOPIC, msg(1, 50.0))
+    assert writes == [] and adapter.ignored == 1
+    assert adapter.heartbeat_values() == {contracts.VSS_HEARTBEAT_ADAPTER: 1.0}   # the simulator owns the chip beat
+    adapter.set_enabled(True)
+    adapter.handle(TOPIC, msg(2, 51.0))
+    assert writes == [{CELL1: 51.0, contracts.VSS_BATTERY_TEMP: 51.0}]
+    assert contracts.VSS_HEARTBEAT_CHIP in adapter.heartbeat_values()
+    assert [e["event"] for e in events() if e["event"].startswith("source_")] == ["source_disabled", "source_enabled"]
+
+
+def test_source_api_switches_and_rejects_bad_bodies():
+    import urllib.error
+    import urllib.request
+    from adapter.mqtt_kuksa_adapter import build_api
+    adapter, _, _ = make_adapter()
+    server = build_api(adapter, "127.0.0.1", 0).start()
+    def call(method, body=None):
+        req = urllib.request.Request(f"http://127.0.0.1:{server.port}/source", method=method,
+                                     data=json.dumps(body).encode() if body is not None else None)
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, None
+    try:
+        assert call("GET") == (200, {"enabled": True})
+        assert call("POST", {"enabled": False}) == (200, {"enabled": False}) and adapter.enabled is False
+        assert call("POST", {"enabled": "no"})[0] == 422 and adapter.enabled is False
+    finally:
+        server.close()

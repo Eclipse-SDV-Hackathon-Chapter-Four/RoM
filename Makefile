@@ -40,15 +40,15 @@ sim:    ## sine-wave temperature simulator into KUKSA (foreground; SIM_PERIOD_S=
 sim-up: ## databroker + simulator in the background; then `make kuksa` in another terminal
 	$(DC) --profile tools up -d databroker simulator
 
-guardian: mqtt-restart ## databroker + simulator + vss-uprotocol-client + guardian + dfm + opensovd + evidence-collector, follows guardian logs (Ctrl+C stops following)
-	$(DC) --profile tools up -d --build databroker simulator vss-uprotocol-client guardian dfm opensovd evidence-collector
+guardian: mqtt-restart ## databroker + simulator (cell 1 too) + adapter (off, cell 1 switch) + vss-uprotocol-client + guardian + dfm + opensovd + evidence-collector, follows guardian logs (Ctrl+C stops following)
+	ADAPTER_ENABLED=0 $(DC) --profile tools up -d --build databroker mosquitto adapter simulator vss-uprotocol-client guardian dfm opensovd evidence-collector
 	$(DC) --profile tools logs -f guardian
 
 adapter: mqtt-restart ## MQTT -> KUKSA adapter in the foreground (starts databroker + mosquitto; stop the simulator first)
 	$(DC) --profile tools run --rm adapter
 
 hw:     mqtt-restart ## hardware run: AZ3166 = cell 1 -> mosquitto -> adapter -> databroker -> vss-uprotocol-client -> guardian + dfm + opensovd; simulator fills cells 2-4; guardian expects the chip + adapter heartbeats
-	SIM_CELLS=2,3,4 REQUIRED_HEARTBEATS=uprotocol,databroker,adapter,chip $(DC) --profile tools up -d --build databroker mosquitto adapter simulator vss-uprotocol-client guardian dfm opensovd evidence-collector
+	SIM_CELLS=2,3,4 ADAPTER_ENABLED=1 REQUIRED_HEARTBEATS=uprotocol,databroker,adapter,chip $(DC) --profile tools up -d --build databroker mosquitto adapter simulator vss-uprotocol-client guardian dfm opensovd evidence-collector
 	$(DC) --profile tools logs -f adapter guardian
 
 campaigns: ## list the bundled fault campaigns
