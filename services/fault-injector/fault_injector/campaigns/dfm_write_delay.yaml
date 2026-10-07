@@ -1,0 +1,15 @@
+# Made with Claude (Claude Code, Anthropic)
+# Cell 3 freezes while every DFM write is held 3 s: the guardian detects on time, the DTC reaches OpenSOVD late
+# but within the evidence collector's 5 s limit; the record shows the diagnostic latency (~3 s).
+# Needs the DFM fault API (DFM_FAULT_API_PORT, DFM_URL).
+run_id: dfm-write-delay-01
+seed: 7
+hazard: "H12: a delayed DFM write makes the diagnostics lag behind the detection"
+safety_goal: "SG9: a detected fault is visible in OpenSOVD within 5 s; late or missing diagnostics fail the run"
+expected_state: MONITORING
+expected_faults: [battery_guardian.cell3.signal_stuck]
+max_detect_ms: 12000
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 20, target: simulator, type: stuck, cell: 3}
+  - {at_s: 10, duration_s: 30, target: dfm, type: write_delay, params: {ms: 3000}}

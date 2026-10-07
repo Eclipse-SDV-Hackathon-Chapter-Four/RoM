@@ -20,3 +20,4 @@ async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 up-rust = { version = "0.9", default-features = false }
 up-transport-zenoh = "0.9.1"
+tiny_http = "0.12"

@@ -4,8 +4,13 @@
 //!   rom-dfm report               uProtocol up://<UP_AUTHORITY>/1002/1/8003 -> DFM (default)
 //!   rom-dfm replay <events.jsonl> same events from a file (fixtures, OpenSOVD integration tests)
 //!   rom-dfm query [--stable]     DFM fault records as JSON (--stable: without timestamps)
+//!
+//! Diagnostic fault injection (fault-injector target "dfm", HTTP on DFM_FAULT_API_PORT, unset / 0 = off, no auth):
+//!   write_delay {ms}       every DFM write waits ms first             -> delayed DFM write
+//!   drop_write {codes}     records of these codes are never written    -> partial OpenSOVD visibility (empty = all)
+//! The guardian and the evidence collector still see the fault events: only the diagnostics are late or missing.
 
-use std::{collections::HashMap, env, fs, str::FromStr, sync::{Arc, mpsc}, thread, time::Duration};
+use std::{collections::HashMap, env, fs, io::Read, str::FromStr, sync::{Arc, Mutex, mpsc}, thread, time::Duration};
 
 use async_trait::async_trait;
 
@@ -79,11 +84,104 @@ struct Bridge {
     _api: FaultApi, // keeps the IPC sink alive
     path: String,
     reporters: HashMap<String, Reporter>,
+    faults: Faults,
+}
+
+#[derive(Clone)]
+struct DfmFault {
+    id: u64,
+    kind: String,
+    params: Value,
+}
+
+impl DfmFault {
+    fn json(&self) -> Value {
+        json!({"id": self.id, "type": self.kind, "params": self.params})
+    }
+}
+
+#[derive(Default)]
+struct DfmFaults {
+    next: u64,
+    active: Vec<DfmFault>,
+}
+
+type Faults = Arc<Mutex<DfmFaults>>;
+
+impl DfmFaults {
+    /// (write delay in ms, drop this code?) for one record.
+    fn decide(&self, code: &str) -> (u64, bool) {
+        let delay = self.active.iter().filter(|f| f.kind == "write_delay").filter_map(|f| f.params["ms"].as_u64()).max();
+        let drop = self.active.iter().any(|f| {
+            f.kind == "drop_write"
+                && f.params["codes"].as_array().is_none_or(|c| c.is_empty() || c.iter().any(|v| v.as_str() == Some(code)))
+        });
+        (delay.unwrap_or(0), drop)
+    }
+
+    /// Same request / response shape as the simulator and vss-uprotocol-client fault APIs (rom_common.control).
+    fn api(&mut self, method: &str, url: &str, body: &str) -> (u16, Value) {
+        let req: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+        match (method, url) {
+            ("GET", "/health") => (200, json!({"ok": true})),
+            ("GET", "/faults") => (200, Value::Array(self.active.iter().map(DfmFault::json).collect())),
+            ("POST", "/run") => {
+                for f in self.active.drain(..) {
+                    log("fault_cleared", json!({"reason": "new_run", "fault": f.json()}));
+                }
+                log("run_started", json!({"run_id": req["run_id"]}));
+                (200, json!({"run_id": req["run_id"]}))
+            }
+            ("POST", "/faults") => {
+                let kind = req["type"].as_str().unwrap_or_default();
+                let params = if req["params"].is_object() { req["params"].clone() } else { json!({}) };
+                if kind != "write_delay" && kind != "drop_write" {
+                    return (422, json!({"error": format!("unknown fault type {kind:?}, use write_delay or drop_write")}));
+                }
+                if kind == "write_delay" && params["ms"].as_u64().is_none_or(|ms| ms == 0) {
+                    return (422, json!({"error": "params.ms must be a positive integer"}));
+                }
+                self.next += 1;
+                let fault = DfmFault { id: self.next, kind: kind.to_string(), params };
+                log("fault_injected", fault.json());
+                self.active.push(fault.clone());
+                (201, fault.json())
+            }
+            ("DELETE", "/faults") => {
+                let ids: Vec<u64> = self.active.drain(..).map(|f| f.id).collect();
+                (200, json!({"cleared": ids}))
+            }
+            ("DELETE", u) if u.starts_with("/faults/") => {
+                let id = u["/faults/".len()..].parse::<u64>().ok();
+                match self.active.iter().position(|f| Some(f.id) == id) {
+                    Some(i) => {
+                        let f = self.active.remove(i);
+                        log("fault_cleared", json!({"reason": "api", "fault": f.json()}));
+                        (200, json!({"cleared": f.id}))
+                    }
+                    None => (404, json!({"error": "no such fault"})),
+                }
+            }
+            _ => (404, json!({"error": "not found"})),
+        }
+    }
+}
+
+fn serve_fault_api(port: u16, faults: Faults) {
+    let server = tiny_http::Server::http(("0.0.0.0", port)).expect("DFM fault API port");
+    log("fault_api_started", json!({"port": port}));
+    for mut request in server.incoming_requests() {
+        let mut body = String::new();
+        let _ = request.as_reader().read_to_string(&mut body);
+        let (status, out) = faults.lock().expect("faults").api(request.method().as_str(), request.url(), &body);
+        let header = tiny_http::Header::from_bytes("Content-Type", "application/json").expect("header");
+        let _ = request.respond(tiny_http::Response::from_string(out.to_string()).with_status_code(status).with_header(header));
+    }
 }
 
 impl Bridge {
     /// Retries until dfm_bin is up: FaultApi checks the catalog hash with the running DFM.
-    fn connect(catalog_file: &str) -> Bridge {
+    fn connect(catalog_file: &str, faults: Faults) -> Bridge {
         let api = loop {
             let catalog = FaultCatalogBuilder::new()
                 .json_file(catalog_file.into())
@@ -116,7 +214,7 @@ impl Bridge {
             .collect();
         let path = catalog.id().to_string();
         log("ready", json!({"path": path, "faults": catalog.len()}));
-        Bridge { _api: api, path, reporters }
+        Bridge { _api: api, path, reporters, faults }
     }
 
     /// fault_msg_id: the uProtocol id of the fault-event message (the guardian logs it as `published.msg_id`).
@@ -125,6 +223,14 @@ impl Bridge {
             Ok(e) => e,
             Err(reason) => return log("rejected", json!({"reason": reason, "fault_msg_id": fault_msg_id})),
         };
+        let (delay_ms, dropped) = self.faults.lock().expect("faults").decide(&code);
+        if dropped {
+            return log("write_dropped", json!({"code": code, "run_id": run_id, "fault_msg_id": fault_msg_id}));
+        }
+        if delay_ms > 0 {
+            log("write_delayed", json!({"code": code, "run_id": run_id, "ms": delay_ms, "fault_msg_id": fault_msg_id}));
+            thread::sleep(Duration::from_millis(delay_ms));
+        }
         let Some(reporter) = self.reporters.get_mut(&code) else {
             return log("rejected", json!({"reason": "unknown_code", "code": code, "fault_msg_id": fault_msg_id}));
         };
@@ -234,10 +340,18 @@ fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     let catalog = var("CATALOG", "/etc/rom/catalog/battery_guardian.json");
     match args.first().map(String::as_str) {
-        None | Some("report") => report(Bridge::connect(&catalog)),
+        None | Some("report") => {
+            let faults = Faults::default();
+            let port: u16 = var("DFM_FAULT_API_PORT", "0").parse().expect("DFM_FAULT_API_PORT");
+            if port > 0 {
+                let f = faults.clone();
+                thread::spawn(move || serve_fault_api(port, f));
+            }
+            report(Bridge::connect(&catalog, faults))
+        }
         Some("replay") => {
             let file = args.get(1).expect("usage: rom-dfm replay <events.jsonl>");
-            let mut bridge = Bridge::connect(&catalog);
+            let mut bridge = Bridge::connect(&catalog, Faults::default());
             for line in fs::read_to_string(file).expect("read events").lines().filter(|l| !l.is_empty()) {
                 bridge.handle(line.as_bytes(), None);
             }
@@ -270,5 +384,18 @@ mod tests {
         assert_eq!((passed.stage, passed.env), (LifecycleStage::Passed, vec![("ts_ms", "1".into())]));
         assert!(parse_event(br#"{"code":"X","stage":"Failed"}"#).is_err());
         assert!(parse_event(b"nope").is_err());
+    }
+
+    #[test]
+    fn fault_api_delays_and_drops_writes_per_code() {
+        let mut f = DfmFaults::default();
+        assert_eq!(f.decide("a"), (0, false));
+        assert_eq!(f.api("POST", "/faults", r#"{"type":"write_delay","params":{"ms":3000}}"#).0, 201);
+        assert_eq!(f.api("POST", "/faults", r#"{"type":"drop_write","params":{"codes":["b"]}}"#).0, 201);
+        assert_eq!((f.decide("a"), f.decide("b")), ((3000, false), (3000, true)));
+        assert_eq!(f.api("POST", "/faults", r#"{"type":"nope"}"#).0, 422);
+        assert_eq!(f.api("DELETE", "/faults/1", "").0, 200);
+        assert_eq!(f.api("POST", "/run", r#"{"run_id":"r"}"#).0, 200);
+        assert_eq!(f.decide("b"), (0, false));
     }
 }

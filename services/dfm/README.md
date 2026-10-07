@@ -94,6 +94,12 @@ OpenSOVD passes them through and turns the numeric ones back into JSON numbers.
 | `ZENOH_MODE` / `ZENOH_CONNECT` / `ZENOH_LISTEN` | `peer` / – / – (compose: `ZENOH_CONNECT=tcp/guardian:7447`) |
 | `CATALOG` | `/etc/rom/catalog/battery_guardian.json` |
 | `DFM_PATH` (query) | `battery_guardian` |
+| `DFM_FAULT_API_PORT` | – (off; compose / Ankaios: `8083`) — diagnostic faults, no authentication |
+
+Diagnostic faults (fault-injector `target: dfm`, same HTTP shape as the simulator API): `write_delay {ms}` holds
+every DFM write (delayed DFM write), `drop_write {codes: [...]}` never writes those codes, empty = all (partial
+OpenSOVD visibility). The guardian and the evidence collector still see the fault events; only the diagnostics are
+late or missing. Logged as `write_delayed` / `write_dropped`.
 
 ```bash
 make guardian       # whole stack incl. dfm + opensovd

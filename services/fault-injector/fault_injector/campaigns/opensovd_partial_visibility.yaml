@@ -1,0 +1,17 @@
+# Made with Claude (Claude Code, Anthropic)
+# Two cell faults, but the DFM never writes one of them: OpenSOVD shows only half of what the guardian detected.
+# The evidence collector must catch the gap, so the expected verdict is FAIL (the evidence chain working).
+# Needs the DFM fault API (DFM_FAULT_API_PORT, DFM_URL).
+run_id: opensovd-partial-visibility-01
+seed: 7
+hazard: "H12: OpenSOVD shows only part of the detected faults"
+safety_goal: "SG9: a detected fault is visible in OpenSOVD within 5 s; late or missing diagnostics fail the run"
+expected_state: MONITORING
+expected_faults: [battery_guardian.cell1.out_of_range, battery_guardian.cell3.signal_stuck]
+expected_verdict: FAIL
+max_detect_ms: 12000
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 20, target: simulator, type: out_of_range, cell: 1, params: {value: 200}}
+  - {at_s: 10, duration_s: 20, target: simulator, type: stuck, cell: 3}
+  - {at_s: 10, duration_s: 30, target: dfm, type: drop_write, params: {codes: [battery_guardian.cell3.signal_stuck]}}

@@ -29,6 +29,11 @@ could not be cleared), `2` invalid campaign or missing URL. Faults are cleared o
 |---|---|---|
 | `SIMULATOR_URL` | `http://127.0.0.1:8080` | simulator API ([simulator README](../simulator/README.md)) |
 | `PUBLISHER_URL` | – | vss-uprotocol-client fault API, needed by campaigns with `target: publisher` |
+| `DFM_URL` | – | DFM bridge fault API (`write_delay {ms}`, `drop_write {codes}`), needed by campaigns with `target: dfm` |
+
+`expected_verdict` (default `PASS`) marks a campaign that breaks the evidence chain on purpose, e.g.
+`opensovd_partial_visibility`: a DTC never reaches OpenSOVD, so the collector must say FAIL. The record carries
+`as_expected`; `make final-run` counts only unexpected verdicts.
 | `UP_CAMPAIGN_EVENTS` | – | `1` (or `--uprotocol`): every log event below also goes out on `up://<UP_AUTHORITY>/1003/1/8005` for the [evidence collector](../evidence-collector/README.md); needs `pip install './services/fault-injector[uprotocol]'`, set in compose. Waits `ZENOH_SETTLE_MS` (1000) for Zenoh to connect first |
 
 ## Campaign file

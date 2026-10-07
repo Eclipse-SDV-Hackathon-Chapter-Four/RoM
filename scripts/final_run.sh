@@ -100,7 +100,7 @@ workloads:
     runtimeConfig: |
       image: localhost/rom/fault-injector:dev
       commandOptions: ["--network", "rom", "-e", "SIMULATOR_URL=http://simulator:8080",
-                       "-e", "PUBLISHER_URL=http://vss-uprotocol-client:8081",
+                       "-e", "PUBLISHER_URL=http://vss-uprotocol-client:8081", "-e", "DFM_URL=http://dfm:8083",
                        "-e", "UP_CAMPAIGN_EVENTS=1", "-e", "ZENOH_CONNECT=tcp/evidence-collector:7447",
                        "-e", "CAMPAIGNS=$CAMPAIGNS", "-e", "SETTLE_S=$SETTLE_S"]
       commandArgs: ["sh", "-c", "sleep \$SETTLE_S; rc=0; for c in \${CAMPAIGNS:-\$(rom-fault-injector list)}; do rom-fault-injector run \$c || rc=1; sleep \$SETTLE_S; done; exit \$rc"]
@@ -123,7 +123,7 @@ done
 curl -sf "$EVIDENCE_URL/evidence?limit=500" > "$RUN_DIR/evidence.json"
 curl -sf "$EVIDENCE_URL/evidence/summary" > "$RUN_DIR/summary.json"
 curl -sf -o "$RUN_DIR/evidence-bundle.zip" "$EVIDENCE_URL/evidence/bundle.zip"   # SHA-256 manifest inside
-jq -r '.[] | "   \(.verdict | . + " " * (13 - length))\(.run_id)  \([.reasons[].text] | join("; "))"' "$RUN_DIR/evidence.json"
+jq -r '.[] | "   \(.verdict | . + " " * (13 - length))\(.run_id)\(if .as_expected == false then "  UNEXPECTED" elif .verdict != "PASS" then "  (expected)" else "" end)  \([.reasons[].text] | join("; "))"' "$RUN_DIR/evidence.json"
 
 say "logs -> runs/$RUN_ID/logs/"
 for w in $STACK campaigns; do ank logs "$w" > "$RUN_DIR/logs/$w.log" 2>&1 || true; done
@@ -132,7 +132,8 @@ jq -n --arg run_id "$RUN_ID" --arg campaigns "$CAMPAIGNS_STATE" --arg ankaios "$
   --slurpfile summary "$RUN_DIR/summary.json" \
   '{run_id: $run_id, campaigns_state: $campaigns, ankaios: $ankaios, summary: $summary[0]}' > "$RUN_DIR/run.json"
 
-FAILED=$(jq '[.[] | select(.verdict == "FAIL")] | length' "$RUN_DIR/evidence.json")
-say "done: runs/$RUN_ID  (campaigns: $CAMPAIGNS_STATE, FAIL: $FAILED)"
+# a FAIL the campaign asked for (expected_verdict) is the evidence chain working, not a failure
+FAILED=$(jq '[.[] | select(.as_expected == false)] | length' "$RUN_DIR/evidence.json")
+say "done: runs/$RUN_ID  (campaigns: $CAMPAIGNS_STATE, unexpected verdicts: $FAILED)"
 ls "$RUN_DIR"
 [ "$FAILED" = 0 ]

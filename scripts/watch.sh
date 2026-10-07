@@ -26,7 +26,7 @@ echo "== campaign $C   (time = seconds since the fault went in)"
 echo "== waiting for the verdict"
 until [ "$(curl -sf "$EVIDENCE/evidence?limit=1000" | jq length)" -gt "$BEFORE" ]; do sleep 1; done
 sleep 2
-curl -sf "$EVIDENCE/evidence?limit=1" | jq -r '.[0] | "\n   \(.verdict)  \(.run_id)\n" + ([.reasons[].text] | map("   - " + .) | join("\n"))'
+curl -sf "$EVIDENCE/evidence?limit=1" | jq -r '.[0] | "\n   \(.verdict)  \(.run_id)\(if .as_expected == false then "  (UNEXPECTED, expected \(.campaign.expected_verdict // "PASS"))" elif .verdict != "PASS" then "  (as expected)" else "" end)\n" + ([.reasons[].text] | map("   - " + .) | join("\n"))'
 ID=$(curl -sf "$EVIDENCE/evidence?limit=1" | jq -r '.[0].record_id')
 echo "   report: $EVIDENCE/ui/$ID"
 xdg-open "$EVIDENCE/ui/$ID" >/dev/null 2>&1 || true

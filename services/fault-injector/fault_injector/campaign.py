@@ -8,13 +8,14 @@
     expected_state: CRITICAL            # what the guardian must reach (evidence collector checks it)
     expected_faults: [battery_guardian.over_temp_critical]   # DFM codes that must show up in OpenSOVD (optional)
     max_detect_ms: 15000                # ... within this long after the first fault
+    expected_verdict: PASS              # optional; FAIL for a campaign that breaks the evidence chain on purpose
     duration_s: 60                      # optional; default = last fault end + settle_s (default 10)
     baseline: {min_c: 25, max_c: 32}    # optional nominal wave (+ period_s); keeps it clear of the 38 / 45 °C thresholds
     faults:
       - {at_s: 10, duration_s: 40, target: simulator, type: drift, cell: 1, params: {rate_c_per_s: 0.8}}
 
 `target: simulator` faults (signal and source) go to the simulator API, `target: publisher` faults (transport) to
-the vss-uprotocol-client API. duration_s on a fault is optional: without it the fault lasts until the campaign ends.
+the vss-uprotocol-client API, `target: dfm` faults (diagnostics: write_delay, drop_write) to the DFM bridge API. duration_s on a fault is optional: without it the fault lasts until the campaign ends.
 Fault parameters are checked by the services when the fault is injected.
 """
 from dataclasses import dataclass, field
@@ -30,7 +31,9 @@ EXPECTED_STATES = STATES + ("MITIGATING",)  # the guardian's internal state; the
 FAULT_TYPES = {
     "simulator": ("stuck", "spike", "drift", "out_of_range", "dropout", "replay_interruption", "heartbeat_loss"),
     "publisher": ("drop", "reorder", "duplicate", "delay", "databroker_down"),
+    "dfm": ("write_delay", "drop_write"),
 }
+VERDICTS = ("PASS", "FAIL", "INCONCLUSIVE")
 NO_CELL_TYPES = ("replay_interruption", "heartbeat_loss")   # whole-source simulator faults
 DEFAULT_SETTLE_S = 10.0
 
@@ -73,6 +76,7 @@ class Campaign:
     faults: List[FaultStep]
     baseline: dict = field(default_factory=dict)
     expected_faults: List[str] = field(default_factory=list)
+    expected_verdict: str = "PASS"
 
     def targets(self) -> set:
         return {f.target for f in self.faults}
@@ -147,9 +151,11 @@ def parse(data) -> Campaign:
     if not isinstance(data, dict):
         raise CampaignError("a campaign is a YAML mapping")
     known = {"run_id", "seed", "hazard", "safety_goal", "expected_state", "expected_faults", "max_detect_ms",
-             "duration_s", "settle_s", "baseline", "faults"}
+             "expected_verdict", "duration_s", "settle_s", "baseline", "faults"}
     if set(data) - known:
         raise CampaignError(f"unknown keys {', '.join(sorted(set(data) - known))}")
+    if data.get("expected_verdict", "PASS") not in VERDICTS:
+        raise CampaignError(f"expected_verdict must be one of {', '.join(VERDICTS)}")
     if data.get("expected_state") not in EXPECTED_STATES:
         raise CampaignError(f"expected_state must be one of {', '.join(EXPECTED_STATES)}")
     seed = data.get("seed", 0)
@@ -168,7 +174,8 @@ def parse(data) -> Campaign:
         raise CampaignError("a fault starts after the campaign ends")
     return Campaign(_text(data, "run_id"), seed, _text(data, "hazard"), _text(data, "safety_goal"),
                     data["expected_state"], int(_number(data.get("max_detect_ms"), "max_detect_ms", 0, False)),
-                    duration, faults, _baseline(data.get("baseline")), _expected_faults(data.get("expected_faults")))
+                    duration, faults, _baseline(data.get("baseline")), _expected_faults(data.get("expected_faults")),
+                    data.get("expected_verdict", "PASS"))
 
 
 def resolve(name_or_path: str) -> Path:
