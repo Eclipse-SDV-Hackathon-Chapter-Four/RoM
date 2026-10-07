@@ -101,7 +101,9 @@ def test_every_bundled_campaign_is_valid_and_run_ids_are_unique():
     loaded = [campaign.load(n) for n in names]
     assert len({c.run_id for c in loaded}) == len(loaded)
     assert any("publisher" in c.targets() for c in loaded) and any(len(c.faults) > 1 for c in loaded)
-    assert all(c.expected_faults for c in loaded)   # every campaign names the DTCs the evidence must show
+    # every campaign names the DTCs the evidence must show, except a negative one (no fault, stays MONITORING)
+    assert all(c.expected_faults or c.expected_state == "MONITORING" for c in loaded)
+    assert any(not c.expected_faults for c in loaded)
 
 
 def test_expected_faults_are_optional_deduplicated_and_checked_against_the_catalog():

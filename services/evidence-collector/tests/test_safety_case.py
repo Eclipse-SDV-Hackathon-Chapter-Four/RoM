@@ -13,7 +13,7 @@ safety_requirements: [{id: SR-01, safety_goal: SG1, description: raise, campaign
 
 def test_bundled_safety_case_is_valid():
     case = safety_case.load()
-    assert set(case.goals) == {f"SG{i}" for i in range(1, 9)} and len(case.requirements) == 8
+    assert set(case.goals) == {f"SG{i}" for i in range(1, 9)} and len(case.requirements) == 9
 
 
 def test_every_bundled_campaign_is_traced_and_matches_its_hazard_and_goal():
