@@ -19,7 +19,7 @@ Every component is its own pip package; services that run under Ankaios have the
 | `services/adapter` | `adapter` | dev image (`make hw`) | MQTT → KUKSA |
 | `services/fault-injector` | `fault_injector` | ✅ | Fault Campaign Runner: YAML campaigns → simulator / publisher fault APIs |
 | `services/dfm` | `dfm` | ✅ TODO | Diagnostic Fault Manager |
-| `services/opensovd` | – | ✅ TODO | Eclipse OpenSOVD server |
+| `services/opensovd` | `rom-opensovd` (Rust) | ✅ | Eclipse OpenSOVD server: SOVD entities + DFM faults (`/sovd/v1/apps/battery_guardian/faults`) |
 | `services/evidence-collector` | `evidence_collector` | ✅ TODO | Evidence Collector → verdicts |
 | `MXChip/AZ3166` | – (C firmware) | – | AZ3166 board on Eclipse ThreadX: sensor telemetry over MQTT, guardian state on its OLED |
 
@@ -44,6 +44,8 @@ make down                        # stop everything
 | `make images` | build all service images `localhost/rom/<service>:dev` |
 | `make hw` | hardware run: AZ3166 → mosquitto → adapter → databroker → vss-uprotocol-client → guardian (no simulator), follow adapter + guardian logs |
 | `make adapter` | MQTT → KUKSA adapter in the foreground |
+| `make sovd` | DFM + Eclipse OpenSOVD server in the background (SOVD REST on `localhost:7690/sovd`) |
+| `make sovd-faults` | guardian faults from the DFM over SOVD |
 | `make sim` | sine-wave simulator into KUKSA (foreground) |
 | `make campaigns` | list the bundled fault campaigns |
 | `make campaign C=thermal_runaway` | run a fault campaign against the running stack (`make guardian` first) |

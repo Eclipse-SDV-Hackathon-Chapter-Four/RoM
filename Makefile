@@ -7,7 +7,7 @@ DC = $(DC_BIN) -f infra/docker-compose.yml
 VENV = .venv
 PY = $(VENV)/bin/python
 
-.PHONY: help mqtt-restart up down logs kuksa sim sim-up guardian campaign campaigns adapter hw images venv sim-local test-local shell test
+.PHONY: help mqtt-restart up down logs kuksa sim sim-up guardian campaign campaigns adapter hw sovd sovd-faults images venv sim-local test-local shell test
 
 help:   ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -52,6 +52,12 @@ campaigns: ## list the bundled fault campaigns
 campaign: ## run a fault campaign against the running stack: make campaign C=thermal_runaway (after `make guardian`)
 	@test -n "$(C)" || { echo "usage: make campaign C=<name>   (make campaigns lists them)"; exit 2; }
 	$(DC) --profile tools run --rm fault-injector rom-fault-injector run $(C)
+
+sovd:   ## DFM + Eclipse OpenSOVD server in the background (SOVD REST on http://localhost:7690/sovd)
+	$(DC) --profile tools --profile todo up -d --build dfm opensovd
+
+sovd-faults: ## battery_guardian faults from the DFM over SOVD (GET /sovd/v1/apps/battery_guardian/faults)
+	@curl -sf http://localhost:7690/sovd/v1/apps/battery_guardian/faults | python3 -m json.tool
 
 images: ## build the service images localhost/rom/<service>:dev (ready for podman / Ankaios)
 	$(DC) --profile tools --profile todo build vss-uprotocol-client guardian fault-injector dfm opensovd evidence-collector

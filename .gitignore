@@ -9,3 +9,5 @@ build/
 
 # AZ3166 firmware: local Wi-Fi credentials, never commit
 MXChip/AZ3166/app/*/cloud_config_local.h
+.vscode/
+target/
