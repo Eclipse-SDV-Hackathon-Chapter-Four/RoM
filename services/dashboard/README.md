@@ -34,13 +34,13 @@ Shutdown:     make dashboard-stop
 7. Reset: `make dashboard-stop && make down`, then start again from step 2. This keeps all saved evidence; never delete evidence to make it look green (a stopped scenario is INCONCLUSIVE on purpose).
 8. After a `git pull`: `make images` first, otherwise the containers are the old ones.
 
-Everything in detail (architecture, file map, all 20 scenarios, verdicts, demo script, troubleshooting): the sections below.
+Everything in detail (architecture, file map, every scenario, verdicts, demo script, troubleshooting): the sections below.
 
 **Contents**
 1. [What this project does](#1-what-this-project-does) · 2. [Architecture](#2-architecture) · 3. [Where is what](#3-where-is-what) ·
 4. [Prerequisites](#4-prerequisites) · 5. [Quick start (fresh clone)](#5-quick-start-fresh-clone) · 6. [Startup, step by step](#6-startup-step-by-step) ·
 7. [Ports](#7-ports-and-urls) · 8. [The dashboard](#8-the-dashboard) · 9. [Run and stop scenarios from the UI](#9-run-and-stop-scenarios-from-the-ui) ·
-10. [The 20 scenarios](#10-the-20-scenarios) · 11. [Scenarios from the command line](#11-scenarios-from-the-command-line) ·
+10. [The scenarios](#10-the-scenarios) · 11. [Scenarios from the command line](#11-scenarios-from-the-command-line) ·
 12. [Evidence Collector and verdicts](#12-evidence-collector-and-verdicts) · 13. [Evidence snapshots](#13-evidence-snapshots-safety-evidence) ·
 14. [Demo script](#14-demo-script-35-minutes) · 15. [Simulator-only, hardware, Ankaios](#15-simulator-only-hardware-ankaios) ·
 16. [Logs](#16-logs-and-inspection) · 17. [Troubleshooting](#17-troubleshooting) · 18. [Stop and clean up](#18-stop-and-clean-up) ·
@@ -93,7 +93,7 @@ hazard  ->  fault injection  ->  detection  ->  mitigation  ->  evidence  ->  ve
 | `services/adapter/` | MQTT -> KUKSA (AZ3166 data, `make hw` only) | hardware path | source |
 | `services/dfm/`, `services/opensovd/` | Diagnostic Fault Manager (Rust) and the SOVD REST server (`:7690`) | fault catalogue | source |
 | `services/fault-injector/` | the campaign runner (`rom-fault-injector list / run`) | new campaign logic | source |
-| `services/fault-injector/fault_injector/campaigns/*.yaml` | **the 20 campaign definitions** | adding / tuning a scenario | source |
+| `services/fault-injector/fault_injector/campaigns/*.yaml` | **the campaign definitions** (`make campaigns` lists them) | adding / tuning a scenario | source |
 | `services/evidence-collector/` | Collector: records, judges, bundle, report; `safety_case.yaml` = hazards, safety goals | verdict rules | source |
 | `services/dashboard/` | this React/Vite app | UI work | source |
 | `services/dashboard/src/components/` | UI cards: `BatteryCellsCard`, `GuardianStateCard`, `DataSourcesCard`, `LastMessageCard`, `TemperatureChart`, `RecentEvents`, `SystemFlow`, `ScenarioRunner` (Run/Stop), `SafetyEvidence`, `ViewTabs` | UI changes | source |
@@ -176,6 +176,7 @@ After you pull new commits, run `make images` and `make guardian` again so the c
 | 55555 | KUKSA Databroker | gRPC (`make kuksa` is a client shell) | no |
 | 8080 (127.0.0.1) | simulator fault API | used by the fault injector | no |
 | 8081 (127.0.0.1) | vss-uprotocol-client fault API | transport faults, used by the fault injector | no |
+| 8083 (compose network only) | DFM fault API | diagnostic faults (`write_delay`, `drop_write`), used by the fault injector | no |
 | 7447 | Zenoh (inside the compose network only) | uProtocol transport between services | no |
 
 Useful URLs: `http://localhost:5173/api/scenarios`, `.../api/scenarios/status`, `.../evidence-api/health` (proxy to the
@@ -247,9 +248,10 @@ API: `GET /api/scenarios`, `GET /api/scenarios/status` (`idle`, `running`, `stop
 `make dashboard` starts, not in a static build. Containers started by the UI are named `rom-dashboard-campaign-<id>-<random>`
 and labelled `rom.dashboard.campaign`.
 
-## 10. The 20 scenarios
+## 10. The scenarios
 
-The dropdown lists the YAML files in `services/fault-injector/fault_injector/campaigns/` (a new YAML appears automatically).
+The dropdown lists the YAML files in `services/fault-injector/fault_injector/campaigns/` (a new YAML appears automatically, with
+a label made from its name). There were 22 when this was written; `make campaigns` is the authority.
 "Expected" is `expected_state` / `expected_faults` of the YAML. Times are seconds into the campaign; each fault starts at
 10 s unless noted.
 
@@ -275,6 +277,11 @@ The dropdown lists the YAML files in `services/fault-injector/fault_injector/cam
 | Sensor Spike, Cell 2 | `sensor_spike_cell2` | cell 2 drops 15 °C for two samples at 10 s | MONITORING; `cell2.rate_implausible` within 1.5 s |
 | Reorder During Runaway | `reorder_during_runaway` | overheat while cell messages are reordered | CRITICAL; a late cooler value never lowers the state, link named |
 | Heartbeat Duplicate / Reorder | `heartbeat_duplicate_reorder` | heartbeats duplicated, then reordered; data fine | MONITORING; harmless, no fault expected |
+| DFM Write Delay | `dfm_write_delay` | cell 3 frozen while every DFM write is held 3 s (needs the DFM fault API) | MONITORING; `cell3.signal_stuck` reaches OpenSOVD ~3 s late, still within the 5 s limit; the record shows the diagnostic latency |
+| OpenSOVD Partial Visibility | `opensovd_partial_visibility` | cell 1 out of range + cell 3 stuck, but the DFM never writes the cell 3 DTC (needs the DFM fault API) | **FAIL on purpose** (`expected_verdict: FAIL`): the Collector must notice that OpenSOVD shows only half of what the Guardian detected |
+
+**Expected FAIL:** `opensovd_partial_visibility` breaks the evidence chain deliberately. Its record says `FAIL` and carries
+`as_expected: true`: that FAIL is the Collector working, not a problem. All other campaigns expect PASS.
 
 Why a campaign "expects" MONITORING: the Guardian must react to the right thing only. A single bad cell or noisy link must be
 named without declaring the whole pack faulty.
@@ -285,13 +292,13 @@ Needs the stack from `make guardian` running. Wait for `MONITORING` first: the U
 not check, and a campaign whose first fault goes in while the Guardian is not calm is judged INCONCLUSIVE.
 
 ```bash
-make campaigns                          # list the 20 ids
+make campaigns                          # list the ids
 make campaign C=thermal_runaway         # run one (blocks until it ends, about 30-75 s)
 make campaign C=transport_drop
 make watch C=thermal_runaway            # same, but live in one terminal (simulator, guardian, DFM, SOVD) + the verdict; needs jq
 docker compose -f infra/docker-compose.yml --profile tools run --rm -T fault-injector \
   rom-fault-injector run thermal_runaway --dry-run      # prints the plan, injects nothing
-make campaigns-all                      # EVERY campaign one after another, roughly 15-20 minutes, then prints the verdicts
+make campaigns-all                      # EVERY campaign one after another, roughly 20-25 minutes, then prints the verdicts
 ```
 
 **Never run two campaigns at once** (the Collector marks overlapping runs INCONCLUSIVE). Do not run `make campaigns-all`
@@ -307,7 +314,7 @@ record** (JSON) with a verdict and reasons. Rules in full: `services/evidence-co
 | Verdict | Meaning (as implemented) |
 |---|---|
 | **PASS** | the campaign ran to its end and no rule was violated: expected DTCs raised in time and confirmed in OpenSOVD, expected state reached (or kept), no false alarm |
-| **FAIL** | a safety expectation was not met: an expected DTC missing or late (`max_detect_ms`), expected state not reached, a state that had to be kept was left, CRITICAL without cooling request, an unexpected DTC, expected DTC absent from OpenSOVD. FAIL wins over INCONCLUSIVE |
+| **FAIL** | a safety expectation was not met: an expected DTC missing or late (`max_detect_ms`), expected state not reached, a state that had to be kept was left, CRITICAL without cooling request, an unexpected DTC, expected DTC absent from OpenSOVD. FAIL wins over INCONCLUSIVE. A campaign may declare `expected_verdict: FAIL`; the record's `as_expected` says whether the verdict was the one intended |
 | **INCONCLUSIVE** | no valid verdict is possible: the campaign was **interrupted** or aborted, had no start / end, injected nothing, the Guardian was not `MONITORING` when the first fault went in, another campaign overlapped, or the campaign is not in the safety case |
 
 Endpoints (`http://localhost:8082`): `/health`, `/evidence?limit=&run_id=` (newest first), `/evidence/summary`,
@@ -384,7 +391,7 @@ Before: stack healthy (`curl -s localhost:8082/health`), `make dashboard` up, a 
 
 **Simulator-only (no board needed, the normal demo):** `make guardian` + `make dashboard` as in [5](#5-quick-start-fresh-clone).
 The simulator writes all four cells (`SIM_CELLS` defaults to `1,2,3,4`), the Guardian requires only the `uprotocol` and
-`databroker` heartbeats. All 20 campaigns and the evidence work in this mode. The only dashboard difference: the fixed `HW`
+`databroker` heartbeats. All campaigns and the evidence work in this mode. The only dashboard difference: the fixed `HW`
 badge / header text (see [8](#8-the-dashboard)) while the AZ3166 data source reads `NO HEARTBEAT`.
 
 **Hybrid / hardware (optional):** cell 1 = the AZ3166, cells 2-4 = simulator.
@@ -471,7 +478,7 @@ container only by its exact name from the command above.
 | `make campaigns` | list campaign ids | no | no |
 | `make campaign C=<id>` | run one campaign from the CLI | until it ends | no |
 | `make watch C=<id>` | one campaign, live view + verdict | until it ends | no |
-| `make campaigns-all` | all campaigns (15-20 min) | **yes** | no |
+| `make campaigns-all` | all campaigns (20+ min) | **yes** | no |
 | `make evidence` | print verdict summary | no | no |
 | `make evidence-bundle` | download `bundle.zip` into the current folder | no | no |
 | `make evidence-snapshot` | save `runs/<timestamp>/` | no | no |

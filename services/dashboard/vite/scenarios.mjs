@@ -45,6 +45,8 @@ export const SCENARIOS = Object.freeze({
   sensor_spike_cell2: "Sensor Spike — Cell 2",
   reorder_during_runaway: "Reorder During Runaway",
   heartbeat_duplicate_reorder: "Heartbeat Duplicate / Reorder",
+  dfm_write_delay: "DFM Write Delay",
+  opensovd_partial_visibility: "OpenSOVD Partial Visibility",
 });
 const SAFE_ID = /^[a-z][a-z0-9_]{0,63}$/;
 const humanize = (id) => id.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");

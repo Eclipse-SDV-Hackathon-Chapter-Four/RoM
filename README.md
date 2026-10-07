@@ -37,7 +37,7 @@ Shutdown:     make dashboard-stop
 7. Reset: `make dashboard-stop && make down`, then start again from step 2. This keeps all saved evidence; never delete evidence to make it look green (a stopped scenario is INCONCLUSIVE on purpose).
 8. After a `git pull`: `make images` first, otherwise the containers are the old ones.
 
-Everything in detail (architecture, file map, all 20 scenarios, verdicts, demo script, troubleshooting): [`services/dashboard/README.md`](services/dashboard/README.md).
+Everything in detail (architecture, file map, every scenario, verdicts, demo script, troubleshooting): [`services/dashboard/README.md`](services/dashboard/README.md).
 
 ## Repository layout
 
@@ -77,7 +77,7 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every PR: `m
 ## Dashboard and demo
 
 The dashboard shows the running stack live (**Live Monitoring**), starts and stops the real fault campaigns from a dropdown
-(**Run Scenario / Stop**, 20 bundled campaigns, nothing is simulated in the browser) and shows the Evidence Collector's report
+(**Run Scenario / Stop**, all bundled campaigns, nothing is simulated in the browser) and shows the Evidence Collector's report
 of a saved run (**Safety Evidence**). Only Docker is needed, no Node.js. Commands: [Demo quick start](#demo-quick-start) above,
 everything else in [`services/dashboard/README.md`](services/dashboard/README.md).
 
