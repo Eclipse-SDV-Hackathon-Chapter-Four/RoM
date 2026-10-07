@@ -28,10 +28,13 @@ workloads:
     restartPolicy: ALWAYS              # the databroker may not accept connections yet on first start
     dependencies:
       databroker: ADD_COND_RUNNING
+    # idle wave = the campaigns' baseline (25-32 °C): the default 30-69 °C crosses WARN_C before the first campaign
+    # and turns into a false alarm in its evidence record
     runtimeConfig: |
       image: localhost/rom/simulator:dev
       commandOptions: ["--network", "rom", "--network-alias", "simulator",
                        "-e", "KUKSA_HOST=databroker", "-e", "SIM_API_HOST=0.0.0.0", "-e", "SIM_API_PORT=8080",
+                       "-e", "SIM_MIN_C=25", "-e", "SIM_MAX_C=32",
                        "-e", "SIM_COOLING=1", "-e", "ZENOH_CONNECT=tcp/guardian:7447"]
 
   vss-uprotocol-client:
