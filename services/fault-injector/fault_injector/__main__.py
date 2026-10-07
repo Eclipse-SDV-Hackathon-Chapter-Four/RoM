@@ -1,5 +1,5 @@
 # Made with Claude (Claude Code, Anthropic)
-"""RoM Fault Campaign Runner — placeholder, not implemented yet (see ROADMAP.md).
+"""RoM Fault Campaign Runner — placeholder, not implemented yet (see README.md#roadmap).
 
 TODO:
 - read campaigns from YAML (seed, run_id, hazard, safety_goal, fault, expected_state, max_detect_ms)
@@ -13,7 +13,7 @@ from rom_common import jsonlog
 
 def main():
     # TODO: implement, see the module docstring and fault-injector/README.md
-    jsonlog.get_logger("fault-injector").log("not_implemented", roadmap="ROADMAP.md")
+    jsonlog.get_logger("fault-injector").log("not_implemented", roadmap="README.md#roadmap")
 
 
 if __name__ == "__main__":
