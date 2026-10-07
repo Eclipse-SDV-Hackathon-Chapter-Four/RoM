@@ -31,6 +31,15 @@ make evidence-bundle                 # evidence-all.zip  (RUN=thermal-runaway-01
 make campaigns-all                   # every bundled campaign in a row, then `make evidence`
 ```
 
+Check a bundle somebody gave you, without any stack (checksums + every verdict judged again from the bundle's own
+`events.jsonl` and `safety_case.yaml`):
+
+```bash
+pip install ./libs/rom-common ./libs/rom-uprotocol ./services/evidence-collector && pip install --no-deps up-python==0.2.0.dev0
+rom-evidence-collector verify evidence-all.zip     # exit 0 = untouched and reproducible
+rom-evidence-collector replay events.jsonl         # judge a whole recording again (e.g. the collector's /data/events.jsonl)
+```
+
 Run **one campaign at a time**: a second campaign started meanwhile (another terminal) mixes its faults into the
 first one, and both runs become INCONCLUSIVE ("campaign X ran at the same time").
 
@@ -38,7 +47,8 @@ first one, and both runs become INCONCLUSIVE ("campaign X ran at the same time")
 
 | File | Job |
 |---|---|
-| `recorder.py` | one raw listener per topic; each message → numbered line in `events.jsonl` + SQLite, then the correlator. Nothing is filtered (duplicates, invalid payloads, periodic repeats). Numbering continues after a restart |
+| `recorder.py` | one raw listener per topic; each message → numbered line in `events.jsonl` + SQLite, then the correlator. Nothing is filtered (duplicates, invalid payloads, periodic repeats). Numbering continues after a restart. The collector's own OpenSOVD answers are recorded too (topic `sovd`) |
+| `replay.py` | `replay` / `verify`: recorded lines through the same parser, correlator and rules on the recorded clock, OpenSOVD = the recorded answers |
 | `correlator.py` | the run window: `campaign_start` opens, `fault_injected` sets t0 and the precondition, FAILED of an expected code starts an OpenSOVD poll, `campaign_end` + grace closes |
 | `verdict.py` | pure `judge(Observed) -> Judgement`, no clock, no network |
 | `safety_case.yaml` / `.py` | H → SG → SR → campaigns (`run_id`); refuses to start on a broken chain |
@@ -81,7 +91,9 @@ clock); the OpenSOVD visibility time (`diagnostics[].latency_ms`) is measured by
 ```
 
 One record per execution (`run_id@start time`), so reruns of the same campaign (e.g. remote reruns) sit side by side.
-`raw_events` points to the exact lines of `events.jsonl` behind the verdict; `msg_id`s are uProtocol message ids.
+`raw_events` points to the exact lines of `events.jsonl` behind the verdict (`context_lines`: the guardian state from
+before the run, the precondition); `msg_id`s are uProtocol message ids. Those lines, OpenSOVD answers included, are
+enough to reach the same verdict again: `verify` does exactly that.
 
 ## HTTP API (port 8082)
 
@@ -111,9 +123,14 @@ Check a bundle: `unzip evidence-all.zip && sha256sum -c <(python3 -c 'import jso
 
 `rom-evidence-collector --check` validates the safety case and exits.
 
+Replay: the clock is the lines' `rx_ts_ms`; at each tick the correlator gets the newest OpenSOVD answer recorded up to
+then. "Same" means same verdict and reasons; detection latencies come from message timestamps and are identical, the
+OpenSOVD visibility time can differ by one tick (500 ms).
+
 ## Test
 
 ```bash
 pytest services/evidence-collector    # verdict rules, safety case (every bundled campaign is traced), correlator on a
-                                      # fake clock + fake OpenSOVD, API + bundle checksums
+                                      # fake clock + fake OpenSOVD (tests/bench.py), replay = live verdict, a changed
+                                      # bundle does not verify, API + bundle checksums
 ```

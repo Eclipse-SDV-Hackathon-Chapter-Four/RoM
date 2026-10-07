@@ -189,6 +189,34 @@ def test_uprotocol_beat_gone_is_the_root_cause_not_its_symptoms():
     assert g.faults == {HEARTBEAT_FAULTS[COMPONENT_UPROTOCOL]: None}        # one code, no signal_stale on top
 
 
+def test_when_the_link_goes_a_beat_that_happens_to_go_stale_first_is_not_blamed():
+    """Live (evidence collector, uprotocol_heartbeat_loss): the databroker beat arrives 0.25 s before the link's in
+    each period, so after a cut it went stale first and databroker_down was raised for 0.5 s."""
+    g = monitored()
+    for i in range(0, 8):
+        beat(g, i * 0.5, COMPONENT_DATABROKER)
+        beat(g, i * 0.5 + 0.25, COMPONENT_UPROTOCOL)
+        g.update(i * 0.5 + 0.25, healthy(i * 0.5))
+    seen = set()
+    for i in range(1, 12):                       # cut after 3.75 s: every beat stops, cells keep flowing
+        t = 3.75 + i * 0.25
+        g.update(t, healthy(t))
+        seen |= set(g.faults)
+    assert seen == {HEARTBEAT_FAULTS[COMPONENT_UPROTOCOL]} and g.lost[0] == COMPONENT_UPROTOCOL
+
+
+def test_a_silent_databroker_is_still_blamed_once_the_link_proves_alive():
+    g = monitored()
+    for i in range(0, 8):
+        alive(g, i * 0.5)
+    t = 3.5
+    while t < 6.0:                               # the databroker beat stops, the link keeps beating
+        t += 0.5
+        beat(g, t, COMPONENT_UPROTOCOL)
+        g.update(t, healthy(t))
+    assert g.lost == [COMPONENT_DATABROKER] and HEARTBEAT_FAULTS[COMPONENT_DATABROKER] in g.faults
+
+
 def test_databroker_reporting_down_is_named_at_once_while_the_link_is_fine():
     g = monitored()
     alive(g, 1)
@@ -389,5 +417,6 @@ def test_when_the_link_comes_back_the_other_components_are_not_blamed_while_thei
     assert g.update(5.4, healthy(5.4))[0] == MONITORING
     beat(g, 6.0, COMPONENT_UPROTOCOL)
     beat(g, 6.5, COMPONENT_UPROTOCOL)
+    beat(g, 7.0, COMPONENT_UPROTOCOL)   # the link beat after the databroker's deadline (6.9 s): it is alive
     g.update(7.0, healthy(7.0))                                       # databroker really went silent afterwards
     assert g.lost[0] == COMPONENT_DATABROKER

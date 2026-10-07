@@ -48,6 +48,7 @@ class Window:
     pending: Dict[str, int] = field(default_factory=dict)       # code -> FAILED seen at (collector clock)
     diagnostics: Dict[str, dict] = field(default_factory=dict)
     interference: List[str] = field(default_factory=list)      # other run_ids seen while this window was open
+    context_lines: List[int] = field(default_factory=list)     # lines before first_line the verdict needs (state)
 
 
 class Correlator:
@@ -58,6 +59,7 @@ class Correlator:
         self.grace_ms, self.diag_timeout_ms, self.end_timeout_ms = grace_ms, diag_timeout_ms, end_timeout_ms
         self.window: Optional[Window] = None
         self.state: Optional[dict] = None            # latest guardian state, also between campaigns
+        self.state_line: Optional[int] = None        # ... and its line in events.jsonl
 
     # --- input ---------------------------------------------------------------------------------------------
     def on_campaign(self, event: dict, line: int) -> None:
@@ -72,7 +74,8 @@ class Correlator:
             if not SAFE_ID.match(run_id):
                 self._emit("rejected_run_id", run_id=run_id)
                 return
-            self.window = Window(run_id, data, event["ts_ms"], line, line, self._now())
+            self.window = Window(run_id, data, event["ts_ms"], line, line, self._now(),
+                                 context_lines=[self.state_line] if self.state_line is not None else [])
             if previous is not None:
                 self._interfere(self.window, previous)
             self._emit("window_opened", run_id=run_id)
@@ -113,7 +116,7 @@ class Correlator:
     def on_state(self, state: dict, line: int) -> None:
         """state: StateEvent as a dict. Periodic repeats only refresh self.state."""
         changed = self.state is None or (state["state"], state["reason"]) != (self.state["state"], self.state["reason"])
-        self.state = state
+        self.state, self.state_line = state, line
         w = self.window
         if w is not None and (changed or state["previous"] != state["state"]):
             w.last_line = line
@@ -151,11 +154,12 @@ class Correlator:
 
     # --- output --------------------------------------------------------------------------------------------
     def _close(self) -> None:
-        w, self.window = self.window, None
+        w = self.window
         assert w is not None
         for code in w.start.get("expected_faults") or []:
             if code not in w.diagnostics:    # never raised, or still pending: record what OpenSOVD shows now
-                w.diagnostics[code] = {**self._sovd(code), "latency_ms": None}
+                w.diagnostics[code] = {**self._sovd(code), "latency_ms": None}   # (still inside the window's lines)
+        self.window = None
         trace, trace_errors = self._case.trace(w.run_id, w.start.get("hazard", ""), w.start.get("safety_goal", ""))
         obs = Observed(w.run_id, w.start, w.start_ts, w.injected, w.end, w.faults, w.states, w.state_at_injection,
                        w.diagnostics, trace, trace_errors, w.interference)
@@ -195,4 +199,5 @@ def build_record(obs: Observed, j, w: Window) -> dict:
         "reasons": j.reasons,
         "raw_events": f"events.jsonl#L{w.first_line}-L{w.last_line}",
         "lines": [w.first_line, w.last_line],
+        "context_lines": w.context_lines,   # e.g. the guardian state before campaign_start (precondition)
     }

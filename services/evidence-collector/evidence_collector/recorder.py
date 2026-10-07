@@ -11,6 +11,9 @@ points to exactly those lines. A crash in the correlator never loses a message.
     state        up://…/1002/1/8006             parse_state_event       on_state
     cells        up://…/1001/1/8002             parse_cells_msg         on_other
     heartbeat    up://…/1001/1/8004             parse_heartbeat_msg     on_other
+    sovd         (the collector's own OpenSOVD answers, record_sovd)    on_other
+
+The OpenSOVD answers are recorded too, so events.jsonl alone is enough to judge a run again (replay.py).
 """
 import json
 import threading
@@ -21,7 +24,19 @@ from typing import Optional
 from rom_common import clock
 from rom_uprotocol import contract
 
+def parse_sovd(text: str) -> dict:
+    """An OpenSOVD answer as recorded by record_sovd: {"code", "visible", "confirmed", "run_id", ...}."""
+    try:
+        data = json.loads(text)
+    except ValueError as e:
+        raise contract.ContractError(f"invalid_json: {e}") from e
+    if not isinstance(data, dict) or not isinstance(data.get("code"), str):
+        raise contract.ContractError("sovd_answer_without_code")
+    return data
+
+
 PARSERS = {
+    "sovd": parse_sovd,
     "campaign": contract.parse_campaign_event,
     "fault": contract.parse_fault_event,
     "state": contract.parse_state_event,
@@ -44,48 +59,45 @@ class Recorder:
         self.store, self.correlator, self._log, self._now = store, correlator, log, now
         self.line = _count_lines(self.path)
         self.received = 0
-        self._lock = threading.Lock()   # one message at a time: line numbers and correlator order stay in step
+        # one message at a time: line numbers and correlator order stay in step. Re-entrant: the correlator's tick
+        # (under the lock) records the OpenSOVD answers it gets through record_sovd.
+        self._lock = threading.RLock()
 
     def handle(self, topic: str, payload: bytes, msg_id: Optional[str] = None) -> int:
         with self._lock:
-            rx = self._now()
-            self.line += 1
             self.received += 1
             text = payload.decode("utf-8", "replace") if isinstance(payload, bytes) else str(payload)
-            item, error = None, None
+            item, error = parse(topic, text)
+            line = self._write(topic, text, msg_id, error)
             try:
-                item = PARSERS[topic](text)
-            except (contract.ContractError, KeyError) as e:
-                error = str(e)
-            try:
-                body = json.loads(text)
-            except ValueError:
-                body = text
-            entry = {"line": self.line, "rx_ts_ms": rx, "topic": topic, "msg_id": msg_id, "payload": body}
-            if error:
-                entry["rejected"] = error
-            raw = json.dumps(entry, separators=(",", ":"), default=str)
-            with self.path.open("a") as f:
-                f.write(raw + "\n")
-            self.store.add_event(self.line, rx, topic, msg_id, raw)
-            try:
-                self._route(topic, item)
+                route(self.correlator, topic, item, line)
             except Exception as e:   # the message is already on disk; log and keep recording
                 if self._log is not None:
-                    self._log.log("correlator_error", line=self.line, topic=topic, error=repr(e))
-            return self.line
+                    self._log.log("correlator_error", line=line, topic=topic, error=repr(e))
+            return line
 
-    def _route(self, topic: str, item) -> None:
-        if item is None:
-            self.correlator.on_other(self.line)
-        elif topic == "campaign":
-            self.correlator.on_campaign(asdict(item), self.line)
-        elif topic == "fault":
-            self.correlator.on_fault(asdict(item), self.line)
-        elif topic == "state":
-            self.correlator.on_state(asdict(item), self.line)
-        else:
-            self.correlator.on_other(self.line)
+    def record_sovd(self, code: str, result: dict) -> dict:
+        """Write an OpenSOVD answer as a `sovd` line (part of the open run's raw events) and hand it back."""
+        with self._lock:
+            line = self._write("sovd", json.dumps({"code": code, **result}, default=str), None, None)
+            self.correlator.on_other(line)
+            return result
+
+    def _write(self, topic: str, text: str, msg_id: Optional[str], error: Optional[str]) -> int:
+        rx = self._now()
+        self.line += 1
+        try:
+            body = json.loads(text)
+        except ValueError:
+            body = text
+        entry = {"line": self.line, "rx_ts_ms": rx, "topic": topic, "msg_id": msg_id, "payload": body}
+        if error:
+            entry["rejected"] = error
+        raw = json.dumps(entry, separators=(",", ":"), default=str)
+        with self.path.open("a") as f:
+            f.write(raw + "\n")
+        self.store.add_event(self.line, rx, topic, msg_id, raw)
+        return self.line
 
     def tick(self) -> None:
         with self._lock:
@@ -94,6 +106,26 @@ class Recorder:
     def flush(self) -> None:
         with self._lock:
             self.correlator.flush()
+
+
+def parse(topic: str, text: str):
+    """(item, None) or (None, error)."""
+    try:
+        return PARSERS[topic](text), None
+    except (contract.ContractError, KeyError) as e:
+        return None, str(e)
+
+
+def route(correlator, topic: str, item, line: int) -> None:
+    """Hand one parsed message to the correlator (invalid ones and plain data only move the run's line range)."""
+    if topic == "campaign" and item is not None:
+        correlator.on_campaign(asdict(item), line)
+    elif topic == "fault" and item is not None:
+        correlator.on_fault(asdict(item), line)
+    elif topic == "state" and item is not None:
+        correlator.on_state(asdict(item), line)
+    else:
+        correlator.on_other(line)
 
 
 def subscribe(transport, recorder: Recorder) -> dict:

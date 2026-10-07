@@ -10,7 +10,7 @@ PY = $(VENV)/bin/python
 MQTT_HOST_PORT ?= 1883
 export MQTT_HOST_PORT
 
-.PHONY: help mqtt-restart up down logs kuksa sim sim-up guardian campaign campaigns campaigns-all evidence evidence-bundle adapter hw sovd sovd-faults dfm-faults dfm-fixtures final-run images venv sim-local test-local shell test
+.PHONY: evidence-ci help mqtt-restart up down logs kuksa sim sim-up guardian campaign campaigns campaigns-all evidence evidence-bundle adapter hw sovd sovd-faults dfm-faults dfm-fixtures final-run images venv sim-local test-local shell test
 
 help:   ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -67,6 +67,25 @@ campaigns-all: ## run every bundled campaign one after another (the evidence col
 evidence: ## verdicts of the evidence collector (http://localhost:8082/ui/ for the report)
 	@curl -sf http://localhost:8082/evidence/summary | python3 -m json.tool
 	@curl -sf 'http://localhost:8082/evidence?limit=20' | python3 -c 'import json,sys; [print(r["verdict"].ljust(13), r["record_id"], "; ".join(x["text"] for x in r["reasons"])) for r in json.load(sys.stdin)]'
+
+# Campaigns CI runs end to end: short ones, one per fault class (source, transport, signal) plus the thermal runaway.
+CI_CAMPAIGNS ?= source_dropout transport_drop sensor_stuck_cell3 thermal_runaway
+
+evidence-ci: ## CI: stack up, CI_CAMPAIGNS one by one, evidence-ci.zip verified offline; fails unless every run PASSes
+	$(DC) --profile tools up -d --build databroker simulator vss-uprotocol-client guardian dfm opensovd evidence-collector
+	@echo "waiting for the evidence collector and a MONITORING guardian ..."; \
+	for i in $$(seq 90); do curl -sf localhost:8082/health | grep -q '"guardian_state":"MONITORING"' && exit 0; sleep 2; done; \
+	curl -s localhost:8082/health; echo; $(DC) --profile tools logs --tail 30 guardian evidence-collector; exit 1
+	@python3 -c 'import time; print(int(time.time() * 1000))' > .evidence-ci-start
+	@for c in $(CI_CAMPAIGNS); do echo "== $$c"; \
+	  $(DC) --profile tools run --rm -T fault-injector rom-fault-injector run $$c >/dev/null || exit 1; sleep 8; done
+	@$(MAKE) --no-print-directory evidence
+	curl -sf -o evidence-ci.zip "http://localhost:8082/evidence/bundle.zip?since=$$(cat .evidence-ci-start)"
+	$(DC) run --rm --no-deps -T dev rom-evidence-collector verify /app/evidence-ci.zip
+	@curl -sf 'http://localhost:8082/evidence?limit=1000' | python3 -c 'import json,sys; t0=int(open(".evidence-ci-start").read()); \
+	  rs=[r for r in json.load(sys.stdin) if (r["started_at"] or 0) >= t0]; \
+	  bad=[r["record_id"] for r in rs if r["verdict"] != "PASS"]; print(f"{len(rs)} runs, not PASS: {bad or None}"); \
+	  sys.exit(1 if bad or len(rs) != len(sys.argv[1:]) else 0)' $(CI_CAMPAIGNS)
 
 evidence-bundle: ## download the evidence bundle (ZIP with SHA-256 manifest): make evidence-bundle [RUN=thermal-runaway-01]
 	curl -sfOJ 'http://localhost:8082/evidence/bundle.zip$(if $(RUN),?run_id=$(RUN))'
