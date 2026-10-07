@@ -29,6 +29,7 @@ hazard  →  injected fault  →  detection  →  mitigation  →  DTC in OpenSO
 | 🧪 **22 fault campaigns** | YAML, seeded, replayable: signal, source, transport, heartbeat and diagnostics faults, each linked to a hazard and safety goal |
 | ✅ **Evidence, not claims** | The Evidence Collector judges every run against the safety case (12 hazards, 9 safety goals, 11 requirements) and writes a checksummed evidence bundle (SHA-256 manifest) |
 | 🚀 **One command** | `make final-run`: Eclipse Ankaios starts the whole stack, runs every campaign and collects the verdicts |
+| 🧩 **SDV Blueprint** | Packaged for reuse: [`.sdv-blueprint.json`](.sdv-blueprint.json) and [how another team runs and adapts it](docs/blueprint.md) |
 | 🔌 **Real hardware** | MXChip AZ3166 on Eclipse ThreadX as cell 1, guardian state back on its OLED |
 
 ## Architecture
@@ -272,7 +273,8 @@ pytest -q
 - [x] CI on every PR: tests, DFM fixtures, images, campaigns end to end, ThreadX firmware
 - [x] SOVD `faults` resource offered upstream ([opensovd-core#156](https://github.com/eclipse-opensovd/opensovd-core/issues/156#issuecomment-6044980574), follow-up [#28](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/28))
 - [ ] `up-transport-zenoh-python` on zenoh 1.x and the current up-spec ([#26](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/26))
-- [ ] SDV Blueprint proposal: Safety Evidence Factory ([#27](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/27))
+- [x] SDV Blueprint package: [`.sdv-blueprint.json`](.sdv-blueprint.json), [`docs/blueprint.md`](docs/blueprint.md)
+- [ ] Blueprint proposal to [eclipse-sdv-blueprints](https://github.com/eclipse-sdv-blueprints/blueprints/issues) ([#27](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/27))
 
 ## How we worked
 

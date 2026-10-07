@@ -1,0 +1,15 @@
+{
+  "name": "Safety Evidence Factory - Battery Thermal Guardian",
+  "version": "0.1.0",
+  "description": "A reusable safety evidence pipeline for SDV services: seeded fault campaigns hit the signal, transport, heartbeat and diagnostics layers of a battery thermal guardian; every injected fault is traced over Eclipse uProtocol to its detection, mitigation and DTC in Eclipse OpenSOVD, judged PASS / FAIL / INCONCLUSIVE against a hazard and safety-goal catalog, and packaged as a checksummed evidence bundle. Runs with one command under Eclipse Ankaios and in CI.",
+  "participatingProjects": [
+    { "id": "automotive.kuksa" },
+    { "id": "automotive.uprotocol" },
+    { "id": "automotive.opensovd" },
+    { "id": "automotive.ankaios" },
+    { "id": "iot.zenoh" },
+    { "id": "iot.mosquitto" },
+    { "id": "iot.threadx" },
+    { "id": "technology.iceoryx" }
+  ]
+}
