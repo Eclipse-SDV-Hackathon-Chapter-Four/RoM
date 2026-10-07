@@ -105,6 +105,7 @@ services:
     volumes: [iceoryx2-shm:/dev/shm, iceoryx2:/tmp/iceoryx2, dfm-storage:/var/lib/rom-dfm]
     environment:
       ZENOH_CONNECT: tcp/guardian:7447   # guardian publishes up://rom-vehicle/1002/1/8003 and listens on 7447
+      DFM_FAULT_API_PORT: 8083           # diagnostic faults (write_delay, drop_write) for the fault-injector; no authentication
 
   opensovd:
     profiles: ["tools"]          # SOVD REST: http://localhost:7690/sovd/v1/apps/battery_guardian/faults (DFM via iceoryx2)
@@ -124,6 +125,7 @@ services:
     environment:
       SIMULATOR_URL: http://simulator:8080
       PUBLISHER_URL: http://vss-uprotocol-client:8081
+      DFM_URL: http://dfm:8083
       UP_CAMPAIGN_EVENTS: "1"                        # campaign events up://rom-vehicle/1003/1/8005 -> evidence collector
       ZENOH_CONNECT: tcp/evidence-collector:7447
 

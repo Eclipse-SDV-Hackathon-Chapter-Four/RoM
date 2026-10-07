@@ -58,7 +58,7 @@ workloads:
       commandOptions: ["--network", "rom", "--network-alias", "dfm",
                        "-v", "rom-iceoryx2-shm:/dev/shm", "-v", "rom-iceoryx2:/tmp/iceoryx2",
                        "-v", "rom-dfm-storage:/var/lib/rom-dfm",
-                       "-e", "ZENOH_CONNECT=tcp/guardian:7447"]
+                       "-e", "ZENOH_CONNECT=tcp/guardian:7447", "-e", "DFM_FAULT_API_PORT=8083"]
 
   guardian:
     runtime: podman

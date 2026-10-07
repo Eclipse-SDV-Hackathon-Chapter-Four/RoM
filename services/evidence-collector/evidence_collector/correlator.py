@@ -183,7 +183,7 @@ def build_record(obs: Observed, j, w: Window) -> dict:
         "ended_at": (w.end_seen_at if w.end is not None else None),
         "trace": obs.trace,
         "campaign": {k: start.get(k) for k in ("hazard", "safety_goal", "expected_state", "expected_faults",
-                                               "max_detect_ms", "seed", "duration_s", "baseline")}
+                                               "expected_verdict", "max_detect_ms", "seed", "duration_s", "baseline")}
                     | {"status": (obs.end or {}).get("status"), "error": (obs.end or {}).get("error")},
         "injected": obs.injected,
         "state_at_injection": obs.state_at_injection,
@@ -196,6 +196,8 @@ def build_record(obs: Observed, j, w: Window) -> dict:
         "state_changes": [{k: s.get(k) for k in ("ts_ms", "previous", "state", "reason", "msg_id", "seq")}
                           for s in obs.states],
         "verdict": j.verdict,
+        # a campaign may break the evidence chain on purpose (e.g. a hidden DTC): its FAIL is the expected outcome
+        "as_expected": j.verdict == (start.get("expected_verdict") or "PASS"),
         "reasons": j.reasons,
         "raw_events": f"events.jsonl#L{w.first_line}-L{w.last_line}",
         "lines": [w.first_line, w.last_line],

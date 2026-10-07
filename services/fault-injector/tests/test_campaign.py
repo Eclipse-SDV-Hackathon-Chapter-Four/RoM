@@ -141,3 +141,11 @@ def test_heartbeat_and_databroker_faults_are_valid_and_pass_their_params_on():
 def test_heartbeat_codes_are_valid_expected_faults():
     c = campaign.parse(with_(expected_faults=["battery_guardian.chip_silent", "battery_guardian.uprotocol_lost"]))
     assert c.expected_faults == ["battery_guardian.chip_silent", "battery_guardian.uprotocol_lost"]
+
+
+def test_dfm_target_and_expected_verdict():
+    c = campaign.load("opensovd_partial_visibility")
+    assert c.expected_verdict == "FAIL" and "dfm" in c.targets()
+    assert campaign.load("thermal_runaway").expected_verdict == "PASS"
+    with pytest.raises(campaign.CampaignError):
+        campaign.parse(with_(expected_verdict="MAYBE"))

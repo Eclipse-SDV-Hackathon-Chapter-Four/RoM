@@ -15,6 +15,7 @@ hazards:
   - {id: H9, description: "The signal producer process is dead"}
   - {id: H10, description: "The KUKSA databroker is unavailable"}
   - {id: H11, description: "Duplicated or reordered messages make the guardian act on repeated or old data"}
+  - {id: H12, description: "Diagnostics are late or incomplete: OpenSOVD does not show what the guardian detected"}
 
 safety_goals:
   - {id: SG1, hazards: [H1, H6], description: "Warn at 38 °C and request cooling at 45 °C pack maximum, also with a faulty sensor or a degraded link"}
@@ -25,6 +26,7 @@ safety_goals:
   - {id: SG6, hazards: [H6, H8, H9, H10], description: "Name the failing component (link, databroker, producer, chip) within 3 s"}
   - {id: SG7, hazards: [H11], description: "Duplicated / reordered messages are discarded or harmless; repeated cell messages name the degraded link within 3 s"}
   - {id: SG8, hazards: [H3], description: "Name an implausible rate of change per cell within 1 s, without discarding a hot reading"}
+  - {id: SG9, hazards: [H12], description: "A detected fault is visible in OpenSOVD within 5 s; late or missing diagnostics fail the run"}
 
 safety_requirements:
   - id: SR-01
@@ -63,3 +65,11 @@ safety_requirements:
     safety_goal: SG7
     description: "Duplicated / reordered heartbeats raise no fault, the state stays MONITORING"
     campaigns: [heartbeat-duplicate-reorder-01]
+  - id: SR-10
+    safety_goal: SG9
+    description: "A DFM write delayed by 3 s is still visible within 5 s, and the record shows the diagnostic latency"
+    campaigns: [dfm-write-delay-01]
+  - id: SR-11
+    safety_goal: SG9
+    description: "A detected fault that never reaches OpenSOVD fails the run and names the missing DTC (expected FAIL)"
+    campaigns: [opensovd-partial-visibility-01]

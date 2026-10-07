@@ -31,6 +31,7 @@ def main(argv: Optional[list] = None) -> int:
     r.add_argument("campaign", help="bundled campaign name or path to a YAML file")
     r.add_argument("--simulator-url", default=os.environ.get("SIMULATOR_URL", DEFAULT_SIMULATOR_URL))
     r.add_argument("--publisher-url", default=os.environ.get("PUBLISHER_URL"))
+    r.add_argument("--dfm-url", default=os.environ.get("DFM_URL"), help="DFM bridge fault API (diagnostic faults)")
     r.add_argument("--dry-run", action="store_true", help="validate and print the timeline, inject nothing")
     r.add_argument("--uprotocol", action="store_true", default=os.environ.get("UP_CAMPAIGN_EVENTS", "").lower() in ("1", "true", "yes"),
                    help="also publish the campaign events over uProtocol (evidence collector input)")
@@ -49,6 +50,8 @@ def main(argv: Optional[list] = None) -> int:
     urls = {"simulator": a.simulator_url.rstrip("/")}
     if a.publisher_url:
         urls["publisher"] = a.publisher_url.rstrip("/")
+    if a.dfm_url:
+        urls["dfm"] = a.dfm_url.rstrip("/")
     runner = Runner(c, urls, log)
     try:
         runner.check_urls()
