@@ -1,0 +1,4 @@
+# Dev image of the dashboard: Node for Vite, plus the Docker CLI + Compose plugin so the "Run Scenario" control can start a
+# fault campaign of the running stack (`docker compose ... run fault-injector`). Built and started by scripts/dashboard-dev.sh.
+FROM node:22-alpine
+RUN apk add --no-cache docker-cli docker-cli-compose
