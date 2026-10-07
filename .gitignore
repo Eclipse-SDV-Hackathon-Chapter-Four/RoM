@@ -12,3 +12,5 @@ evidence-data/
 MXChip/AZ3166/app/*/cloud_config_local.h
 .vscode/
 target/
+evidence-ci.zip
+.evidence-ci-start

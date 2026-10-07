@@ -32,6 +32,25 @@ jobs:
       - uses: actions/checkout@v4
       - run: make images
 
+  campaigns:
+    name: Fault campaigns end to end (evidence collector verdicts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # whole stack in compose, CI_CAMPAIGNS (Makefile) one by one; fails unless every run is PASS and the
+      # evidence bundle verifies offline (checksums + every verdict judged again from its own events.jsonl)
+      - run: make evidence-ci
+      - if: always()
+        run: docker compose -f infra/docker-compose.yml --profile tools logs --no-color > stack-logs.txt 2>&1 || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-ci
+          path: |
+            evidence-ci.zip
+            stack-logs.txt
+          if-no-files-found: ignore
+
   firmware:
     name: AZ3166 firmware (Eclipse ThreadX)
     runs-on: ubuntu-latest

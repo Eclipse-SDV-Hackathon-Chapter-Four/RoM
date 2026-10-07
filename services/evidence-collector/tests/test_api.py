@@ -59,6 +59,8 @@ def test_bundle_has_only_the_referenced_lines_and_valid_checksums(client):
     assert "evidence/r2@2.json" not in one.namelist()
     assert client.get("/evidence/bundle.zip?run_id=../x").status_code == 400
     assert client.get("/evidence/bundle.zip?run_id=none").status_code == 404
+    late = zipfile.ZipFile(io.BytesIO(client.get("/evidence/bundle.zip?since=1500").content))
+    assert [n for n in late.namelist() if n.startswith("evidence/")] == ["evidence/r2@2.json"]
 
 
 def test_html_pages(client):
@@ -75,3 +77,15 @@ def test_sovd_answer_is_interpreted_and_an_unreachable_server_is_a_result():
     down = SovdClient("http://127.0.0.1:9/sovd", "battery_guardian", timeout_s=0.5).check("battery_guardian.x")
     assert down["visible"] is False and down["error"].startswith("OpenSOVD unreachable")
     assert down["url"] == "http://127.0.0.1:9/sovd/v1/apps/battery_guardian/faults/battery_guardian.x"
+
+
+def test_rerun_consistency(client):
+    from evidence_collector.report import consistency
+
+    rs = [record("a@1", "a", "PASS"), record("a@2", "a", "PASS"), record("a@3", "a", "INCONCLUSIVE"),
+          record("b@1", "b", "PASS"), record("b@2", "b", "FAIL")]
+    rs[1]["detection"]["faults"][0]["latency_ms"] = 12
+    c = consistency(rs)
+    assert c["a"]["consistent"] and c["a"]["executions"] == 3 and c["a"]["latency_ms"] == {"c": {"min": 7, "max": 12}}
+    assert not c["b"]["consistent"] and c["b"]["verdicts"] == {"PASS": 1, "FAIL": 1}
+    assert client.get("/evidence/consistency").json()["r1"]["executions"] == 1

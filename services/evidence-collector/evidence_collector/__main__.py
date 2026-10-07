@@ -5,6 +5,8 @@ fault -> detection -> diagnostics -> mitigation -> verdict). See README.md.
 
     rom-evidence-collector             subscribe and serve http://EVIDENCE_HTTP_HOST:EVIDENCE_HTTP_PORT (8082)
     rom-evidence-collector --check     validate the safety case and exit
+    rom-evidence-collector replay events.jsonl       judge a recording again, offline (prints one line per run)
+    rom-evidence-collector verify evidence-all.zip   bundle checksums + every record judged again; exit 0 = all match
 """
 import argparse
 import sys
@@ -22,7 +24,16 @@ TICK_S = 0.5
 def main(argv: Optional[list] = None) -> int:
     p = argparse.ArgumentParser(prog="rom-evidence-collector", description=__doc__.splitlines()[0])
     p.add_argument("--check", action="store_true", help="validate the safety case and exit")
+    sub = p.add_subparsers(dest="command")
+    sub.add_parser("replay", help="judge a recorded events.jsonl again, offline").add_argument("events")
+    sub.add_parser("verify", help="check an evidence bundle and judge its records again").add_argument("bundle")
     a = p.parse_args(argv)
+    if a.command == "verify":
+        from .replay import verify
+        ok, lines = verify(a.bundle)
+        print("\n".join(lines))
+        print("bundle verified" if ok else "bundle NOT verified")
+        return 0 if ok else 1
     cfg, log = settings(), jsonlog.get_logger("evidence-collector")
     try:
         case = safety_case.load(cfg.safety_case)   # refuse to start on a broken hazard -> goal -> requirement chain
@@ -32,6 +43,12 @@ def main(argv: Optional[list] = None) -> int:
     log.log("safety_case_loaded", path=str(cfg.safety_case), hazards=len(case.hazards), goals=len(case.goals),
             requirements=len(case.requirements))
     if a.check:
+        return 0
+    if a.command == "replay":
+        from .replay import replay, read_jsonl
+        from pathlib import Path
+        for r in replay(read_jsonl(Path(a.events).read_text()), case):
+            print(f"{r['verdict']:13} {r['record_id']}  " + "; ".join(x["text"] for x in r["reasons"]))
         return 0
 
     import uvicorn
@@ -47,7 +64,9 @@ def main(argv: Optional[list] = None) -> int:
 
     store = Store(cfg.db_path, cfg.evidence_dir)
     sovd = SovdClient(cfg.sovd_url, cfg.sovd_app)
-    correlator = Correlator(store.save, sovd.check, case, log, grace_ms=cfg.grace_ms,
+    # every OpenSOVD answer is recorded in events.jsonl (topic "sovd"), so a run can be judged again offline
+    correlator = Correlator(store.save, lambda code: recorder.record_sovd(code, sovd.check(code)), case, log,
+                            grace_ms=cfg.grace_ms,
                             diag_timeout_ms=cfg.diag_timeout_ms, end_timeout_ms=cfg.end_timeout_ms)
     recorder = Recorder(cfg.events_path, store, correlator, log)
     transport = make_transport(uris.evidence_collector_uri())   # keep a reference, or the Zenoh session closes
@@ -66,7 +85,8 @@ def main(argv: Optional[list] = None) -> int:
 
     threading.Thread(target=ticker, name="tick", daemon=True).start()
     app = create_app(store, case.text, lambda: {"ok": subscribed, "topics": keys, "received": recorder.received,
-                                                "open_run": correlator.window.run_id if correlator.window else None})
+                                                "open_run": correlator.window.run_id if correlator.window else None,
+                                                "guardian_state": correlator.state["state"] if correlator.state else None})
     try:
         uvicorn.run(app, host=cfg.http_host, port=cfg.http_port, log_level="warning")   # handles SIGTERM / Ctrl+C
     finally:
