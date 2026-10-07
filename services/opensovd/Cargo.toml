@@ -1,0 +1,36 @@
+# Made with Claude (Claude Code, Anthropic)
+# RoM OpenSOVD server: the upstream Eclipse OpenSOVD server (opensovd-core) plus the SOVD `faults`
+# resource backed by the fault-lib DFM query API (dfm/query over iceoryx2). See README.md.
+[package]
+name = "rom-opensovd"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[[bin]]
+name = "rom-opensovd"
+path = "src/main.rs"
+
+[dependencies]
+# Eclipse OpenSOVD core, pinned (same revs as in README.md; bump both together).
+opensovd-server = { git = "https://github.com/eclipse-opensovd/opensovd-core.git", rev = "601d68083dcce284c5bba88158316543ba7258af" }
+opensovd-core = { git = "https://github.com/eclipse-opensovd/opensovd-core.git", rev = "601d68083dcce284c5bba88158316543ba7258af" }
+opensovd-models = { git = "https://github.com/eclipse-opensovd/opensovd-core.git", rev = "601d68083dcce284c5bba88158316543ba7258af" }
+# Eclipse OpenSOVD fault-lib: DFM query API. Same rev as services/dfm (keep them equal).
+dfm_lib = { git = "https://github.com/eclipse-opensovd/fault-lib.git", rev = "12dac502616701734f90a61edca1326ae2ac6506" }
+# iceoryx2 at the rev fault-lib pins (dead-node cleanup after a DFM restart).
+iceoryx2 = { git = "https://github.com/eclipse-iceoryx/iceoryx2.git", rev = "eba5da4b8d8cb03bccf1394d88a05e31f58838dc" }
+
+anyhow = "1"
+axum = { version = "0.8", default-features = false, features = ["json", "query", "tokio"] }
+clap = { version = "4", features = ["derive", "env"] }
+http = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "net", "rt", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

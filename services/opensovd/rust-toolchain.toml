@@ -1,0 +1,5 @@
+# Made with Claude (Claude Code, Anthropic)
+# Same toolchain as eclipse-opensovd/opensovd-core at the pinned rev (fault-lib builds on it too).
+[toolchain]
+channel = "nightly-2026-05-07"
+profile = "minimal"
