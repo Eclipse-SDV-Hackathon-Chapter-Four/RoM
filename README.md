@@ -274,7 +274,7 @@ pytest -q
 - [x] SOVD `faults` resource offered upstream ([opensovd-core#156](https://github.com/eclipse-opensovd/opensovd-core/issues/156#issuecomment-6044980574), follow-up [#28](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/28))
 - [ ] `up-transport-zenoh-python` on zenoh 1.x and the current up-spec ([#26](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/26))
 - [x] SDV Blueprint package: [`.sdv-blueprint.json`](.sdv-blueprint.json), [`docs/blueprint.md`](docs/blueprint.md)
-- [ ] Blueprint proposal to [eclipse-sdv-blueprints](https://github.com/eclipse-sdv-blueprints/blueprints/issues) ([#27](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/27))
+- [x] Blueprint proposed to Eclipse SDV Blueprints ([eclipse-sdv-blueprints/blueprints#27](https://github.com/eclipse-sdv-blueprints/blueprints/issues/27))
 
 ## How we worked
 
