@@ -53,6 +53,55 @@ cells stack. Pack + Warning / Critical heats the current Pack Max cell, Pack + S
 target also focuses that cell in Battery Cells, the chart and Recent Events; a pack target returns to the overview.
 While an override is active a "Mock override" badge stays visible even if the panel is collapsed.
 
+## Live mode: the running stack (Evidence Collector)
+
+`VITE_DASHBOARD_SOURCE` selects the source explicitly: `mock` (default: simulated telemetry, demo controls) or `live`.
+There is deliberately **no automatic fallback** from live to mock, so simulated numbers can never pass for real ones.
+
+```
+AZ3166 -> MQTT -> adapter -> KUKSA Cell1 \
+simulator ----------------> KUKSA Cells 2-4 -> VSS uProtocol client -> uProtocol/Zenoh -> Guardian
+                                                              (cells 8002, heartbeat 8004, fault 8003, state 8006)
+                                                                            |
+                      Evidence Collector  GET :8082/events?since=&limit=  <--+      (records every bus message)
+                                |  (Vite proxy /evidence-api, same origin, because the collector sends no CORS headers)
+                                v
+              EvidenceCollectorDataSource -> LiveModel -> DashboardData -> the unchanged React components
+```
+
+Run it (dev server in Docker needs host networking, because the collector is published on the host's 127.0.0.1:8082):
+
+```bash
+make hw        # or make guardian: the stack, including the evidence collector
+docker run --rm --network host -v "$PWD/services/dashboard":/app -w /app \
+  -e VITE_DASHBOARD_SOURCE=live node:22-alpine sh -lc "npm run dev -- --host 0.0.0.0"
+```
+
+Without Docker: `VITE_DASHBOARD_SOURCE=live npm run dev`. `EVIDENCE_API_TARGET` (default `http://localhost:8082`) is where the proxy
+points, `VITE_EVIDENCE_API_BASE` (default `/evidence-api`) what the browser calls. See `.env.example`.
+
+**The dashboard displays the Guardian; it does not recompute it.** `src/data/liveModel.ts` only reads the bus messages:
+
+| Dashboard | Comes from |
+|---|---|
+| pack state, reason | Guardian `state` events (8006); a row in Recent Events only when state or reason changes, not for the ~1 Hz repeat |
+| Pack Max (temperature, cell) | Guardian `state.temp_c` / `state.cell`; shown as `--` while the Guardian is in SENSOR_FAULT |
+| cell temperatures | `cells` messages (8002). A message holds only the cells written in that update (the AZ3166 adapter writes Cell 1, the simulator Cells 2-4), so a missing cell is **not** a fault: the last value is held |
+| cell status (STALE, STUCK, OUT_OF_RANGE) | active Guardian `fault` events: FAILED sets it, PASSED clears it. Whole-stream faults and SENSOR_FAULT without a cell code show STALE / UNTRUSTED |
+| FAULT / CLEARED rows | Guardian `fault` events, real `battery_guardian.*` codes in the row tooltip; thermal codes and stream/heartbeat faults are already a state row |
+| Data Sources | `heartbeat` messages (8004): `chip` for the AZ3166, `simulator` for Cells 2-4. ALIVE (ok), DOWN (explicit), NO HEARTBEAT (none for 3 s, state unknown) |
+| Seq, Last update | `seq` of the latest cells message and the time the collector received the last event |
+| Latency | real: collector receive time minus the cell's `source_ts_ms` (KUKSA write to bus), typically 50-110 ms. Not board-to-browser |
+| chart | one point per `cells` message, trusted values only; a faulty cell breaks its line |
+
+Polling: the collector returns the *oldest* lines after `since`, so the source finds the tail with a few one-line probes, loads
+the last ~2000 lines once (about 2 minutes of history and events), then fetches only new lines every 500 ms. If the API is
+unreachable the red "Evidence Collector unreachable" state is shown and the last real data stays on screen; it recovers by
+itself, also after a collector restart or reset.
+
+Known limits: a fault that started before that ~2-minute window is not known until its PASSED edge arrives; WARN/CRIT
+(38/45 °C) are the Guardian defaults, the events do not carry them; times assume the dashboard and the stack share a clock.
+
 ## Data boundary (how OpenSOVD plugs in later)
 
 ```

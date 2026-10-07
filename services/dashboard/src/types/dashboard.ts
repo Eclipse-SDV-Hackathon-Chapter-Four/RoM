@@ -13,8 +13,10 @@ export type GuardianState =
  *  STUCK        the value has not changed for STUCK_S
  *  OUT_OF_RANGE outside the plausibility bounds
  *  NO_DATA      the cell has not been seen yet
+ *  UNTRUSTED    the Guardian is in SENSOR_FAULT and cannot vouch for any reading (e.g. "chip silent"), and this cell
+ *               has no fault of its own
  */
-export type CellStatus = "OK" | "STALE" | "STUCK" | "OUT_OF_RANGE" | "NO_DATA";
+export type CellStatus = "OK" | "STALE" | "STUCK" | "OUT_OF_RANGE" | "NO_DATA" | "UNTRUSTED";
 
 /** Where a cell's reading comes from in the final demo topology: cell 1 = AZ3166 board, cells 2-4 = simulator. */
 export type CellSource = "HW" | "SIM";
@@ -59,7 +61,12 @@ export interface GuardianInfo {
  * never claims the source itself is offline. A source may only be shown as offline if the data model carries explicit
  * source / heartbeat information that proves it.
  */
-export type SourceStatus = "RECEIVING" | "NO_DATA";
+export type SourceStatus =
+  | "RECEIVING" // mock: its cells are reaching the Guardian
+  | "NO_DATA" // mock: they are not, cause unknown
+  | "ALIVE" // live: the source's heartbeat says ok
+  | "DOWN" // live: the source's heartbeat says down (explicit)
+  | "NO_HEARTBEAT"; // live: no heartbeat seen recently, state unknown
 
 /** A producer of cell readings. Final topology: the AZ3166 board (cell 1) and the simulator (cells 2-4). */
 export interface SourceInfo {
@@ -76,6 +83,8 @@ export interface MessageInfo {
   seq: number;
   /** null when the producer sent no epoch timestamp, so latency is unknown. */
   latency_ms: number | null;
+  /** When the last message reached the data source (ISO 8601). Live sources set it; the mock omits it. */
+  received_at?: string | null;
   /** Cell ids that were present in the last cell message. */
   cells_reported: number[];
   total_cells: number;

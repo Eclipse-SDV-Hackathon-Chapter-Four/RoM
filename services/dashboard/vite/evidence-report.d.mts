@@ -1,0 +1,10 @@
+export const REQUIRED_FILES: string[];
+export function isTimestampName(name: string): boolean;
+export function selectRun(runsDir: string): { status: "no_runs_dir" | "no_valid_run" | "ok"; run?: { id: string; dir: string; kind: "timestamp" | "fallback" } };
+export function readZipEntries(buf: Buffer): { name: string; method: number; crc: number; csize: number; usize: number; offset: number }[];
+export function extractZip(zipPath: string, destDir: string): void;
+export function ensureBundle(run: { id: string; dir: string }): { bundle: string; report: string };
+export function verifyManifest(bundleDir: string): "verified" | "mismatch" | "absent";
+export function summarizeEvidence(runDir: string): { campaigns: number; pass: number; fail: number; inconclusive: number; other: number; summaryAgrees: boolean | null };
+export function resolveEvidence(runsDir: string, base?: string): { reportPath?: string; meta: Record<string, unknown> };
+export default function evidenceReportPlugin(options?: { runsDir?: string; base?: string }): import("vite").Plugin;

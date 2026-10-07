@@ -40,6 +40,7 @@ export const CELL_STATUS_LABEL: Record<CellStatus, string> = {
   STUCK: "STUCK",
   OUT_OF_RANGE: "OUT OF RANGE",
   NO_DATA: "NO DATA",
+  UNTRUSTED: "UNTRUSTED",
 };
 
 /** Temperature tone relative to the supervisory thresholds. */

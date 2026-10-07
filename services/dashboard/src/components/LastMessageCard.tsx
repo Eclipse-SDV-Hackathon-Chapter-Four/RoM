@@ -15,7 +15,7 @@ export default function LastMessageCard({ message, updatedAt }: Props) {
     <section className="card compact" aria-label="Last message">
       <h2 className="card-title small">
         <span className="icon icon-blue"><DatabaseIcon /></span>Last Message
-        <span className="updated">Last update: {formatTime(updatedAt)}</span>
+        <span className="updated">Last update: {formatTime(message.received_at ?? updatedAt)}</span>
       </h2>
       <dl className="kv">
         <dt>Seq:</dt>

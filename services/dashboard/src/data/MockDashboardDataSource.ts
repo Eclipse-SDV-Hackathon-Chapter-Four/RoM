@@ -8,6 +8,7 @@ import { TimelineEngine } from "./mockTimeline";
  * No network. The stream runs while at least one subscriber is attached.
  */
 export class MockDashboardDataSource implements DashboardDataSource {
+  readonly mode = "mock" as const;
   readonly label = "simulated telemetry";
   private readonly engine: TimelineEngine;
   private readonly listeners = new Set<(data: DashboardData) => void>();

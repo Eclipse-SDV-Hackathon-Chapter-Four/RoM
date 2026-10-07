@@ -18,6 +18,8 @@ export interface DemoControls {
  * Implementations: MockDashboardDataSource now (simulated stream), OpenSovdDataSource later.
  */
 export interface DashboardDataSource {
+  /** "mock" = simulated telemetry, "live" = the running stack. The UI labels itself from this, never silently. */
+  readonly mode: "mock" | "live";
   /** Short text for the UI, e.g. "simulated telemetry". */
   readonly label: string;
   /**
