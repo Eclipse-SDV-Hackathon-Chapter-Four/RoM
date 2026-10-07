@@ -1,0 +1,102 @@
+# Made with Claude (Claude Code, Anthropic)
+# RoM stack as Eclipse Ankaios workloads (podman, one agent "rom_hpc"): the same services as infra/docker-compose.yml,
+# from the self-contained images localhost/rom/*:dev (no bind mounts). Started by scripts/final_run.sh, which also
+# creates the podman network "rom" (DNS by --network-alias) and the volumes (iceoryx2 tmpfs, DFM, evidence).
+# The fault campaigns are added per run by the script; the evidence collector judges each one live.
+apiVersion: v1
+workloads:
+  mosquitto:
+    runtime: podman
+    agent: rom_hpc
+    restartPolicy: ALWAYS
+    runtimeConfig: |
+      image: docker.io/library/eclipse-mosquitto:2
+      commandOptions: ["--network", "rom", "--network-alias", "mosquitto"]
+      commandArgs: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+
+  databroker:
+    runtime: podman
+    agent: rom_hpc
+    restartPolicy: ALWAYS
+    runtimeConfig: |
+      image: localhost/rom/databroker:dev
+      commandOptions: ["--network", "rom", "--network-alias", "databroker"]
+
+  simulator:
+    runtime: podman
+    agent: rom_hpc
+    restartPolicy: ALWAYS              # the databroker may not accept connections yet on first start
+    dependencies:
+      databroker: ADD_COND_RUNNING
+    # idle wave = the campaigns' baseline (25-32 °C): the default 30-69 °C crosses WARN_C before the first campaign
+    # and turns into a false alarm in its evidence record
+    runtimeConfig: |
+      image: localhost/rom/simulator:dev
+      commandOptions: ["--network", "rom", "--network-alias", "simulator",
+                       "-e", "KUKSA_HOST=databroker", "-e", "SIM_API_HOST=0.0.0.0", "-e", "SIM_API_PORT=8080",
+                       "-e", "SIM_MIN_C=25", "-e", "SIM_MAX_C=32",
+                       "-e", "SIM_COOLING=1", "-e", "ZENOH_CONNECT=tcp/guardian:7447"]
+
+  vss-uprotocol-client:
+    runtime: podman
+    agent: rom_hpc
+    restartPolicy: ALWAYS
+    dependencies:
+      databroker: ADD_COND_RUNNING
+    runtimeConfig: |
+      image: localhost/rom/vss-uprotocol-client:dev
+      commandOptions: ["--network", "rom", "--network-alias", "vss-uprotocol-client",
+                       "-e", "KUKSA_HOST=databroker", "-e", "ZENOH_LISTEN=tcp/0.0.0.0:7447",
+                       "-e", "FAULT_API_HOST=0.0.0.0", "-e", "FAULT_API_PORT=8081"]
+
+  dfm:
+    runtime: podman
+    agent: rom_hpc
+    restartPolicy: ALWAYS
+    runtimeConfig: |
+      image: localhost/rom/dfm:dev
+      commandOptions: ["--network", "rom", "--network-alias", "dfm",
+                       "-v", "rom-iceoryx2-shm:/dev/shm", "-v", "rom-iceoryx2:/tmp/iceoryx2",
+                       "-v", "rom-dfm-storage:/var/lib/rom-dfm",
+                       "-e", "ZENOH_CONNECT=tcp/guardian:7447"]
+
+  guardian:
+    runtime: podman
+    agent: rom_hpc
+    restartPolicy: ALWAYS
+    dependencies:                      # dfm first: fault events are not buffered
+      vss-uprotocol-client: ADD_COND_RUNNING
+      mosquitto: ADD_COND_RUNNING
+      dfm: ADD_COND_RUNNING
+    runtimeConfig: |
+      image: localhost/rom/guardian:dev
+      commandOptions: ["--network", "rom", "--network-alias", "guardian",
+                       "-e", "ZENOH_CONNECT=tcp/vss-uprotocol-client:7447", "-e", "ZENOH_LISTEN=tcp/0.0.0.0:7447",
+                       "-e", "REQUIRED_HEARTBEATS=uprotocol,databroker", "-e", "MQTT_HOST=mosquitto"]
+
+  opensovd:
+    runtime: podman
+    agent: rom_hpc
+    restartPolicy: ALWAYS
+    dependencies:
+      dfm: ADD_COND_RUNNING
+    runtimeConfig: |
+      image: localhost/rom/opensovd:dev
+      commandOptions: ["--network", "rom", "--network-alias", "opensovd", "-p", "127.0.0.1:7690:7690",
+                       "-v", "rom-iceoryx2-shm:/dev/shm", "-v", "rom-iceoryx2:/tmp/iceoryx2",
+                       "-e", "SOVD_DFM_APPS=battery_guardian"]
+
+  evidence-collector:                  # records every RoM topic, judges each campaign run: http://localhost:8082/ui/
+    runtime: podman
+    agent: rom_hpc
+    restartPolicy: ALWAYS
+    dependencies:
+      guardian: ADD_COND_RUNNING
+      opensovd: ADD_COND_RUNNING
+    runtimeConfig: |
+      image: localhost/rom/evidence-collector:dev
+      commandOptions: ["--network", "rom", "--network-alias", "evidence-collector", "-p", "127.0.0.1:8082:8082",
+                       "-v", "rom-evidence-data:/data",
+                       "-e", "ZENOH_LISTEN=tcp/0.0.0.0:7447",
+                       "-e", "ZENOH_CONNECT=tcp/vss-uprotocol-client:7447,tcp/guardian:7447",
+                       "-e", "SOVD_URL=http://opensovd:7690/sovd"]
