@@ -42,6 +42,30 @@
     }
   },
   {
+    "code": "battery_guardian.cell1.rate_implausible",
+    "env": {
+      "cell": "1",
+      "cells": "46,46,46,46",
+      "reason": "implausible rate",
+      "seq": "39",
+      "temp_c": "46.0"
+    },
+    "fault_name": "BatteryCell1TempRateImplausible",
+    "occurrence_counter": 2,
+    "severity": 3,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0xA2",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "1",
+      "testFailedThisOperationCycle": "1",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "1"
+    }
+  },
+  {
     "code": "battery_guardian.cell1.signal_stale",
     "env": {},
     "fault_name": "BatteryCell1TempStale",
@@ -95,6 +119,30 @@
     "fault_name": "BatteryCell2TempOutOfRange",
     "occurrence_counter": 1,
     "severity": 4,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0xA2",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "1",
+      "testFailedThisOperationCycle": "1",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "1"
+    }
+  },
+  {
+    "code": "battery_guardian.cell2.rate_implausible",
+    "env": {
+      "cell": "2",
+      "cells": "46,46,46,46",
+      "reason": "implausible rate",
+      "seq": "39",
+      "temp_c": "46.0"
+    },
+    "fault_name": "BatteryCell2TempRateImplausible",
+    "occurrence_counter": 2,
+    "severity": 3,
     "status": {
       "confirmedDTC": "0",
       "mask": "0xA2",
@@ -174,6 +222,30 @@
     }
   },
   {
+    "code": "battery_guardian.cell3.rate_implausible",
+    "env": {
+      "cell": "3",
+      "cells": "46,46,46,46",
+      "reason": "implausible rate",
+      "seq": "39",
+      "temp_c": "46.0"
+    },
+    "fault_name": "BatteryCell3TempRateImplausible",
+    "occurrence_counter": 2,
+    "severity": 3,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0xA2",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "1",
+      "testFailedThisOperationCycle": "1",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "1"
+    }
+  },
+  {
     "code": "battery_guardian.cell3.signal_stale",
     "env": {},
     "fault_name": "BatteryCell3TempStale",
@@ -227,6 +299,30 @@
     "fault_name": "BatteryCell4TempOutOfRange",
     "occurrence_counter": 1,
     "severity": 4,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0xA2",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "1",
+      "testFailedThisOperationCycle": "1",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "1"
+    }
+  },
+  {
+    "code": "battery_guardian.cell4.rate_implausible",
+    "env": {
+      "cell": "4",
+      "cells": "46,46,46,46",
+      "reason": "implausible rate",
+      "seq": "39",
+      "temp_c": "46.0"
+    },
+    "fault_name": "BatteryCell4TempRateImplausible",
+    "occurrence_counter": 2,
+    "severity": 3,
     "status": {
       "confirmedDTC": "0",
       "mask": "0xA2",
@@ -323,6 +419,24 @@
     "fault_name": "BatteryKuksaDatabrokerDown",
     "occurrence_counter": 0,
     "severity": 4,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0x00",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "0",
+      "testFailedThisOperationCycle": "0",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "0"
+    }
+  },
+  {
+    "code": "battery_guardian.link_integrity",
+    "env": {},
+    "fault_name": "BatteryLinkIntegrity",
+    "occurrence_counter": 0,
+    "severity": 3,
     "status": {
       "confirmedDTC": "0",
       "mask": "0x00",

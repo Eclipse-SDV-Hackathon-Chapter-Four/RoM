@@ -17,6 +17,9 @@ keeps flowing, and the other way round.
 
 A message that is dropped, held or delayed still returns OK to the publisher: the sender cannot tell.
 A held message with nobody behind it stays held until the next message or until `reorder` is cleared.
+
+With a log, every decision is one `transport_fault` line (action dropped / held / released / duplicated / delayed,
+the message's msg_id, stream): which message a fault hit, matched against what the receivers logged.
 """
 import itertools
 import random
@@ -30,6 +33,7 @@ from uprotocol.v1.umessage_pb2 import UMessage
 from uprotocol.v1.ustatus_pb2 import UStatus
 
 from .contract import UP_RESOURCE_HEARTBEAT
+from .publisher import msg_id
 
 TRANSPORT_FAULTS = ("drop", "reorder", "duplicate", "delay")
 PROBE_FAULTS = ("databroker_down",)   # no effect on messages: the client's databroker probe reads them (see active())
@@ -76,7 +80,8 @@ def _schedule(delay_s: float, fn: Callable[[], None]) -> None:
 
 class TransportFaults:
     def __init__(self, seed: int = 0, clock: Callable[[], float] = time.monotonic,
-                 schedule: Callable[[float, Callable[[], None]], None] = _schedule):
+                 schedule: Callable[[float, Callable[[], None]], None] = _schedule, log=None):
+        self._log = log
         self._clock = clock
         self._schedule = schedule
         self._lock = threading.Lock()
@@ -147,40 +152,50 @@ class TransportFaults:
     def __call__(self, message: UMessage, forward: Callable[[UMessage], UStatus]) -> UStatus:
         self.expire()
         with self._lock:
-            out = self._plan(message)
+            out, decisions = self._plan(message)
+        if self._log is not None:   # outside the lock: logging never holds up the publisher path
+            for action, m, stream, extra in decisions:
+                self._log.log("transport_fault", action=action, msg_id=msg_id(m), stream=stream, **extra)
         return self._emit(out, forward)
 
-    def _plan(self, message: UMessage) -> List[tuple]:
-        """What to send now, as (message, delay_s). Called with the lock held; sends nothing itself."""
+    def _plan(self, message: UMessage) -> tuple:
+        """(what to send now as (message, delay_s), decisions to log). Called with the lock held; sends nothing."""
         out: List[tuple] = []
+        decisions: List[tuple] = []
         kind = _kind(message)
         kinds = {f.type: f for f in self._faults.values() if f.params["topic"] in ("all", kind)}
         self.counts["seen"] += 1
         held = self._held.pop(kind, None)
         if held is not None and "reorder" not in kinds:   # reorder was cleared: release what it was holding
             out.append((held, 0.0))
+            decisions.append(("released", held, kind, {}))
             held = None
         if "drop" in kinds and self._rng.random() < kinds["drop"].params["probability"]:
             self.counts["dropped"] += 1
+            decisions.append(("dropped", message, kind, {}))
             if held is not None:
                 self._held[kind] = held
-            return out
+            return out, decisions
         msgs = [message]
         if "reorder" in kinds:
             if held is None:
                 self._held[kind] = message
                 self.counts["reordered"] += 1
-                return out
+                decisions.append(("held", message, kind, {}))
+                return out, decisions
             msgs = [message, held]
+            decisions.append(("released", held, kind, {}))
         if "duplicate" in kinds:
             extra = kinds["duplicate"].params["copies"]
+            decisions.extend(("duplicated", m, kind, {"copies": extra}) for m in msgs)
             msgs = [m for m in msgs for _ in range(1 + extra)]
             self.counts["duplicated"] += extra
         delay_s = kinds["delay"].params["ms"] / 1000 if "delay" in kinds else 0.0
         if delay_s:
             self.counts["delayed"] += len(msgs)
+            decisions.extend(("delayed", m, kind, {"ms": kinds["delay"].params["ms"]}) for m in msgs)
         out.extend((m, delay_s) for m in msgs)
-        return out
+        return out, decisions
 
     def _emit(self, out: List[tuple], forward: Callable[[UMessage], UStatus]) -> UStatus:
         status = UStatus(code=UCode.OK)

@@ -1,0 +1,14 @@
+# Made with Claude (Claude Code, Anthropic)
+# Heartbeats arrive twice, then out of order, while the data is fine: harmless, so no fault and no state change.
+# Needs the vss-uprotocol-client fault API (FAULT_API_PORT, PUBLISHER_URL).
+run_id: heartbeat-duplicate-reorder-01
+seed: 7
+hazard: "H11: duplicated and reordered heartbeats"
+safety_goal: "SG7: duplicated / reordered messages are discarded or harmless"
+expected_state: MONITORING
+expected_faults: []
+max_detect_ms: 3000
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 8, target: publisher, type: duplicate, params: {copies: 1, topic: heartbeat}}
+  - {at_s: 20, duration_s: 8, target: publisher, type: reorder, params: {topic: heartbeat}}

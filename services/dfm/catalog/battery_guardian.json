@@ -353,6 +353,86 @@
             "reporter_side_reset": null,
             "manager_side_debounce": null,
             "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.link_integrity"
+            },
+            "name": "BatteryLinkIntegrity",
+            "summary": "Duplicated or reordered cell messages (3 within 5 s): discarded, the pack stays monitored",
+            "category": "Communication",
+            "severity": "Warn",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell1.rate_implausible"
+            },
+            "name": "BatteryCell1TempRateImplausible",
+            "summary": "Cell 1 temperature changed faster than 10 degC/s: sensor glitch suspected, the reading is kept",
+            "category": "Hardware",
+            "severity": "Warn",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell2.rate_implausible"
+            },
+            "name": "BatteryCell2TempRateImplausible",
+            "summary": "Cell 2 temperature changed faster than 10 degC/s: sensor glitch suspected, the reading is kept",
+            "category": "Hardware",
+            "severity": "Warn",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell3.rate_implausible"
+            },
+            "name": "BatteryCell3TempRateImplausible",
+            "summary": "Cell 3 temperature changed faster than 10 degC/s: sensor glitch suspected, the reading is kept",
+            "category": "Hardware",
+            "severity": "Warn",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell4.rate_implausible"
+            },
+            "name": "BatteryCell4TempRateImplausible",
+            "summary": "Cell 4 temperature changed faster than 10 degC/s: sensor glitch suspected, the reading is kept",
+            "category": "Hardware",
+            "severity": "Warn",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
         }
     ]
 }

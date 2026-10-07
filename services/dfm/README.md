@@ -12,7 +12,7 @@ Eclipse OpenSOVD [`fault-lib`](https://github.com/eclipse-opensovd/fault-lib) DF
 
 ## 1. Catalog — [`catalog/battery_guardian.json`](catalog/battery_guardian.json)
 
-fault-lib catalog format, `"id": "battery_guardian"` (= DFM entity path = SOVD app id), 17 `Text` codes,
+fault-lib catalog format, `"id": "battery_guardian"` (= DFM entity path = SOVD app id), 27 `Text` codes,
 no debounce (the guardian already debounces: `STUCK_S`, `IMBALANCE_S`, `STALE_MS`).
 
 | Code | Severity | Raised by the guardian when |
@@ -25,6 +25,9 @@ no debounce (the guardian already debounces: `STUCK_S`, `IMBALANCE_S`, `STALE_MS
 | `battery_guardian.cell{1..4}.signal_stale` | Error | that cell missing for 2 s while the others arrive |
 | `battery_guardian.cell{1..4}.signal_stuck` | Error | that cell unchanged for `STUCK_S` (10 s) |
 | `battery_guardian.cell{1..4}.out_of_range` | Error | that cell outside −40..150 °C |
+| `battery_guardian.cell{1..4}.rate_implausible` | Warn | that cell changed faster than `MAX_RATE_C_PER_S` (10 °C/s); the reading is kept |
+| `battery_guardian.link_integrity` | Warn | 3 duplicated / reordered cell messages within 5 s (discarded) |
+| `battery_guardian.{uprotocol_lost,databroker_down,adapter_down,simulator_down,chip_silent}` | Error | heartbeat root cause, see [`../guardian/README.md`](../guardian/README.md) |
 
 The same list is `rom_common.contracts.FAULT_CODES`; `tests/test_catalog.py` fails if the two drift apart.
 **Add a code in both places in the same PR.**
@@ -47,7 +50,7 @@ The same list is `rom_common.contracts.FAULT_CODES`; `tests/test_catalog.py` fai
 
 | Field | Type | Meaning |
 |---|---|---|
-| `code` | string | one of the 17 catalog codes |
+| `code` | string | one of the 27 catalog codes |
 | `stage` | `FAILED` / `PASSED` | → `LifecycleStage::Failed` / `Passed` |
 | `ts_ms` | int | when the guardian saw the edge (epoch ms) |
 | `cell` | int / null | cell of a sensor fault; hottest cell for thermal faults and imbalance; null for `signal_stale` |

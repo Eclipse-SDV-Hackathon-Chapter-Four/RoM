@@ -68,7 +68,7 @@ def test_mqtt_client_subscribe_dispatch_and_publish():
 
 def test_fault_codes_pack_and_per_cell():
     assert contracts.cell_fault(2, "signal_stuck") == "battery_guardian.cell2.signal_stuck"
-    assert len(contracts.FAULT_CODES) == len(set(contracts.FAULT_CODES)) == 5 + 4 * 3 + 5   # pack + per cell + heartbeat root causes
+    assert len(contracts.FAULT_CODES) == len(set(contracts.FAULT_CODES)) == 6 + 4 * 4 + 5   # pack + per cell + heartbeat root causes
     assert set(contracts.HEARTBEAT_FAULTS) == set(contracts.HEARTBEAT_DIAGNOSIS_ORDER)
     assert all(c.startswith(contracts.DFM_ENTITY + ".") for c in contracts.FAULT_CODES)
     for cell, kind in ((0, "signal_stuck"), (5, "signal_stuck"), (1, "bogus")):

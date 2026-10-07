@@ -1,4 +1,7 @@
 # Made with Claude (Claude Code, Anthropic)
+import io
+import json
+
 import pytest
 from uprotocol.v1.ucode_pb2 import UCode
 from uprotocol.v1.ustatus_pb2 import UStatus
@@ -138,3 +141,23 @@ def test_invalid_requests_are_rejected(args):
     f, _, _ = setup()
     with pytest.raises(FaultError):
         f.add(*args)
+
+
+def test_every_decision_is_logged_with_the_msg_id_of_the_message():
+    from rom_common.jsonlog import JsonLogger
+    from rom_uprotocol import uris
+    from rom_uprotocol.publisher import SignalPublisher, msg_id
+
+    buf, wire, clock = io.StringIO(), Wire(), Clock()
+    f = TransportFaults(0, clock, wire.schedule, log=JsonLogger("vss_publisher", stream=buf))
+    pub = SignalPublisher(wire.send, uris.battery_cells_topic("v"), 2000)
+    msgs = [pub.build_json(lambda seq, ts: b"{}") for _ in range(5)]
+    for fault in (("drop",), ("duplicate", {"copies": 2}), ("delay", {"ms": 300}), ("reorder",)):
+        f.add(*fault)
+        f(msgs.pop(0), wire.send)
+        f.clear()
+    f(msgs[0], wire.send)                                           # reorder cleared: the held one goes out
+    logged = [(e["action"], e["msg_id"], e["stream"]) for e in map(json.loads, buf.getvalue().splitlines())]
+    ids = [msg_id(m) for m in wire.sent if not isinstance(m, str)]
+    assert [a for a, _, _ in logged] == ["dropped", "duplicated", "delayed", "held", "released"]
+    assert all(stream == "signal" for _, _, stream in logged) and logged[1][1] == ids[0]
