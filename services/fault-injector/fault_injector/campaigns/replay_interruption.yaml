@@ -1,0 +1,12 @@
+# Made with Claude (Claude Code, Anthropic)
+# The source (a replay in the real stack) stalls and later resumes where it stopped.
+run_id: replay-interruption-01
+seed: 7
+hazard: "H5: interrupted signal replay / source stall"
+safety_goal: "SG4: a silent signal is a sensor fault after 2 s, and the guardian recovers when it resumes"
+expected_state: SENSOR_FAULT
+expected_faults: [battery_guardian.signal_stale]
+max_detect_ms: 4000
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 8, target: simulator, type: replay_interruption}

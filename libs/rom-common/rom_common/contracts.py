@@ -8,6 +8,9 @@ from typing import Any, Optional
 
 # --- VSS (KUKSA) -----------------------------------------------------------
 VSS_BATTERY_TEMP = "Vehicle.Powertrain.TractionBattery.Temperature.Max"
+# Custom overlay (infra/vss/rom_cells.json): one temperature per battery cell, cells are numbered from 1.
+VSS_CELL_TEMPS = tuple(f"Vehicle.Powertrain.TractionBattery.Cells.Cell{i}.Temperature" for i in range(1, 5))
+N_CELLS = len(VSS_CELL_TEMPS)
 
 # --- MQTT topics -----------------------------------------------------------
 TOPIC_SENSOR_TEMP = "rom/sensor/battery/temp"          # QoS 0, no retain
@@ -32,16 +35,30 @@ REASON_STALE = "STALE"
 REASON_STUCK = "STUCK"
 REASON_OUT_OF_RANGE = "OUT_OF_RANGE"
 
-# --- Guardian faults -> DFM (names = services/dfm/catalog/battery_guardian.json) ---
-FAULT_OVER_TEMP_WARNING = "BatteryOverTempWarning"
-FAULT_OVER_TEMP_CRITICAL = "BatteryOverTempCritical"
-FAULT_MITIGATION_FAILED = "BatteryMitigationFailed"
-FAULT_SIGNAL_STALE = "BatteryTempSignalStale"
-FAULT_SIGNAL_STUCK = "BatteryTempSignalStuck"
-FAULT_OUT_OF_RANGE = "BatteryTempOutOfRange"
-FAULTS = (FAULT_OVER_TEMP_WARNING, FAULT_OVER_TEMP_CRITICAL, FAULT_MITIGATION_FAILED,
-          FAULT_SIGNAL_STALE, FAULT_SIGNAL_STUCK, FAULT_OUT_OF_RANGE)
-FAILED, PASSED = "Failed", "Passed"
+
+# --- DFM fault codes (catalog services/dfm/catalog/battery_guardian.json) ----
+# The DFM entity path = catalog id = SOVD app id. Pack faults have one code; sensor faults have one code per
+# cell, so two broken cells are two independent DFM records. The guardian raises them, the DFM stores them,
+# OpenSOVD serves them, campaigns list the ones they expect.
+DFM_ENTITY = "battery_guardian"
+FAULT_OVER_TEMP_WARNING = f"{DFM_ENTITY}.over_temp_warning"
+FAULT_OVER_TEMP_CRITICAL = f"{DFM_ENTITY}.over_temp_critical"
+FAULT_MITIGATION_FAILED = f"{DFM_ENTITY}.mitigation_failed"
+FAULT_SIGNAL_STALE = f"{DFM_ENTITY}.signal_stale"          # the whole cell stream is silent
+FAULT_CELL_IMBALANCE = f"{DFM_ENTITY}.cell_imbalance"
+PACK_FAULTS = (FAULT_OVER_TEMP_WARNING, FAULT_OVER_TEMP_CRITICAL, FAULT_MITIGATION_FAILED, FAULT_SIGNAL_STALE,
+               FAULT_CELL_IMBALANCE)
+CELL_FAULT_KINDS = ("signal_stale", "signal_stuck", "out_of_range")
+
+
+def cell_fault(cell: int, kind: str) -> str:
+    """Per-cell sensor fault code, e.g. cell_fault(2, "signal_stuck") -> battery_guardian.cell2.signal_stuck."""
+    if kind not in CELL_FAULT_KINDS or not 1 <= cell <= N_CELLS:
+        raise ValueError(f"no fault code for cell {cell!r} / {kind!r}")
+    return f"{DFM_ENTITY}.cell{cell}.{kind}"
+
+
+FAULT_CODES = PACK_FAULTS + tuple(cell_fault(c, k) for c in range(1, N_CELLS + 1) for k in CELL_FAULT_KINDS)
 
 
 class ContractError(ValueError):
@@ -105,16 +122,3 @@ def parse_display_cmd(payload: "bytes | str") -> dict:
     if not isinstance(data, dict) or data.get("state") not in STATES:
         raise ContractError("invalid_display_cmd")
     return data
-
-
-def build_fault_event(fault: str, stage: str, ts_ms: int, temp_c: Optional[float], reason: str,
-                      seq: Optional[int], msg_id: Optional[str]) -> str:
-    """Guardian fault event, published over uProtocol (up://<authority>/1002/1/8001); services/dfm
-    turns it into a fault-lib record."""
-    if fault not in FAULTS or stage not in (FAILED, PASSED):
-        raise ContractError(f"unknown_fault_or_stage: {fault} {stage}")
-    return json.dumps(
-        {"fault": fault, "stage": stage, "ts_ms": ts_ms, "temp_c": temp_c, "reason": reason,
-         "seq": seq, "msg_id": msg_id},
-        separators=(",", ":"),
-    )

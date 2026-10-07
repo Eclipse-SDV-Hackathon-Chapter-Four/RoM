@@ -1,11 +1,14 @@
 # Made with Claude (Claude Code, Anthropic)
 # Everything in one place. rom-python = dev image (all packages editable, repo bind-mounted);
-# vss-uprotocol-client, guardian and the TODO services use their own images (services/*/Dockerfile).
+# vss-uprotocol-client, guardian, fault-injector and the TODO services use their own images (services/*/Dockerfile).
 # Shortcuts: `make up`, `make kuksa` (interactive shell), `make down`, `make help`. Raw commands:
 #   docker compose -f infra/docker-compose.yml up -d databroker mosquitto   # brokers
 #   docker compose -f infra/docker-compose.yml run --rm kuksa-client         # kuksa-client shell
 #   docker compose -f infra/docker-compose.yml run --rm dev bash             # shell in the venv
 #   docker compose -f infra/docker-compose.yml run --rm dev pytest            # tests
+# iceoryx2 mounts shared by dfm and opensovd (see the iceoryx2 volumes at the bottom).
+x-iceoryx2: &iceoryx2 [iceoryx2-shm:/dev/shm, iceoryx2:/tmp/iceoryx2]
+
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -14,7 +17,9 @@ services:
 
   databroker:
     image: ghcr.io/eclipse-kuksa/kuksa-databroker:${KUKSA_VERSION:-latest}
-    command: --insecure
+    # default VSS (inside the image) + the RoM overlay with the 4 battery cells (infra/vss/rom_cells.json)
+    command: --insecure --vss vss_release_6.0.json,/vss/rom_cells.json
+    volumes: ["./vss:/vss:ro,z"]
     ports: ["55555:55555"]
 
   kuksa-client:
@@ -42,6 +47,9 @@ services:
       KUKSA_HOST: databroker
       SIM_HZ: ${SIM_HZ:-2}
       SIM_PERIOD_S: ${SIM_PERIOD_S:-120}
+      SIM_API_HOST: 0.0.0.0            # fault API for the fault-injector (and curl); no authentication
+      SIM_API_PORT: 8080
+    ports: ["127.0.0.1:8080:8080"]     # loopback only: keep the unauthenticated fault API off the network
     depends_on: [databroker]
 
   adapter:
@@ -59,22 +67,26 @@ services:
 
   # --- Service images (services/*/Dockerfile): self-contained, no bind mounts, env-only config ---
   vss-uprotocol-client:
-    profiles: ["tools"]          # KUKSA -> uProtocol over Zenoh (topic up://rom-vehicle/1001/1/8001)
+    profiles: ["tools"]          # KUKSA -> uProtocol over Zenoh: cells up://rom-vehicle/1001/1/8002, Max .../8001
     build: {context: .., dockerfile: services/vss-uprotocol-client/Dockerfile}
     image: localhost/rom/vss-uprotocol-client:dev
     restart: on-failure
     environment:
       KUKSA_HOST: databroker
       ZENOH_LISTEN: tcp/0.0.0.0:7447   # guardian connects here; no multicast needed between containers
+      FAULT_API_HOST: 0.0.0.0          # transport-fault API (drop, delay, ...) for the fault-injector; no authentication
+      FAULT_API_PORT: 8081
+    ports: ["127.0.0.1:8081:8081"]     # loopback only
     depends_on: [databroker]
 
   guardian:
-    profiles: ["tools"]          # reads the battery temp over uProtocol (never KUKSA), logs state changes as JSON
+    profiles: ["tools"]          # reads the 4 cells over uProtocol (never KUKSA); fault events up://rom-vehicle/1002/1/8003
     build: {context: .., dockerfile: services/guardian/Dockerfile}
     image: localhost/rom/guardian:dev
     restart: on-failure
     environment:
       ZENOH_CONNECT: tcp/vss-uprotocol-client:7447
+      ZENOH_LISTEN: tcp/0.0.0.0:7447   # the DFM reporter (and rom-up-monitor --faults) connects here for fault events
       MQTT_HOST: mosquitto             # display command (rom/actuator/display/cmd) goes out over MQTT
     depends_on: [vss-uprotocol-client, mosquitto, dfm]   # dfm first: fault events are not buffered
 
@@ -83,23 +95,31 @@ services:
     build: {context: .., dockerfile: services/dfm/Dockerfile}
     image: localhost/rom/dfm:dev
     restart: on-failure
-    ipc: shareable               # OpenSOVD gateway joins with ipc: "service:dfm" + the iceoryx2 volume
-    volumes: [iceoryx2:/tmp/iceoryx2, dfm-storage:/var/lib/rom-dfm]   # fault records survive restarts
+    # iceoryx2 shm + files shared with opensovd; fault records survive restarts
+    volumes: [iceoryx2-shm:/dev/shm, iceoryx2:/tmp/iceoryx2, dfm-storage:/var/lib/rom-dfm]
     environment:
-      ZENOH_CONNECT: tcp/vss-uprotocol-client:7447   # guardian publishes up://rom-vehicle/1002/1/8001
-    depends_on: [vss-uprotocol-client]
-
-  # --- TODO placeholders: images build and start, log "not_implemented" and exit ---
-  fault-injector:
-    profiles: ["todo"]
-    build: {context: .., dockerfile: services/fault-injector/Dockerfile}
-    image: localhost/rom/fault-injector:dev
+      ZENOH_CONNECT: tcp/guardian:7447   # guardian publishes up://rom-vehicle/1002/1/8003 and listens on 7447
 
   opensovd:
-    profiles: ["todo"]
+    profiles: ["tools"]          # SOVD REST: http://localhost:7690/sovd/v1/apps/battery_guardian/faults (DFM via iceoryx2)
     build: {context: .., dockerfile: services/opensovd/Dockerfile}
     image: localhost/rom/opensovd:dev
+    restart: on-failure
+    ports: ["7690:7690"]
+    volumes: *iceoryx2                 # same iceoryx2 shm + files as the DFM; same user too (iceoryx2 files are owner-only)
+    environment:
+      SOVD_DFM_APPS: battery_guardian  # DFM entity path = fault catalog id
+    depends_on: [dfm]
 
+  fault-injector:
+    profiles: ["tools"]          # one-shot: `make campaign C=thermal_runaway` (stack from `make guardian` must be up)
+    build: {context: .., dockerfile: services/fault-injector/Dockerfile}
+    image: localhost/rom/fault-injector:dev
+    environment:
+      SIMULATOR_URL: http://simulator:8080
+      PUBLISHER_URL: http://vss-uprotocol-client:8081
+
+  # --- TODO placeholders: images build and start, log "not_implemented" and exit ---
   evidence-collector:
     profiles: ["todo"]
     build: {context: .., dockerfile: services/evidence-collector/Dockerfile}
@@ -118,5 +138,12 @@ services:
 
 volumes:
   kuksa-history:
-  iceoryx2:
   dfm-storage:
+  # iceoryx2 between dfm and opensovd: /dev/shm (shared memory) and /tmp/iceoryx2 (service/node files)
+  # must live and die together, so both are tmpfs volumes mounted into both containers. A shared IPC
+  # namespace (ipc: service:dfm) plus a persistent volume breaks on a DFM restart: the restart gets a
+  # fresh /dev/shm while the old service files stay -> ServiceInCorruptedState.
+  iceoryx2-shm:
+    driver_opts: {type: tmpfs, device: tmpfs}
+  iceoryx2:
+    driver_opts: {type: tmpfs, device: tmpfs}

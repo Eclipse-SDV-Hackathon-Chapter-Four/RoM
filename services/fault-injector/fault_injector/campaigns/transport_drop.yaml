@@ -1,0 +1,13 @@
+# Made with Claude (Claude Code, Anthropic)
+# Every uProtocol message is lost for a while although KUKSA still has fresh values.
+# Needs the vss-uprotocol-client fault API (FAULT_API_PORT, PUBLISHER_URL).
+run_id: transport-drop-01
+seed: 7
+hazard: "H6: loss of the uProtocol message stream"
+safety_goal: "SG4: a silent signal is a sensor fault after 2 s"
+expected_state: SENSOR_FAULT
+expected_faults: [battery_guardian.signal_stale]
+max_detect_ms: 4000
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 8, target: publisher, type: drop, params: {probability: 1.0}}

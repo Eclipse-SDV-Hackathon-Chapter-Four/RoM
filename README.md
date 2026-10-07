@@ -17,19 +17,19 @@ Every component is its own pip package; services that run under Ankaios have the
 | `libs/rom-common` | `rom_common` | – | contracts, config, JSON logging, KUKSA / MQTT helpers |
 | `libs/rom-uprotocol` | `rom_uprotocol` | – | uProtocol library: Zenoh transport, URIs, publisher, subscriber |
 | `services/vss-uprotocol-client` | `vss_uprotocol_client` | ✅ | KUKSA Databroker → uProtocol |
-| `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (uProtocol in, DFM fault events out over uProtocol; display command over MQTT) |
-| `services/simulator` | `simulator` | dev image | sine-wave temperature into KUKSA |
+| `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (4 cells over uProtocol in, DFM fault events out over uProtocol; display command over MQTT) |
+| `services/simulator` | `simulator` | dev image | 4-cell sine-wave temperature into KUKSA, with HTTP fault injection |
 | `services/adapter` | `adapter` | dev image (`make hw`) | MQTT → KUKSA |
-| `services/fault-injector` | `fault_injector` | ✅ TODO | Fault Campaign Runner |
+| `services/fault-injector` | `fault_injector` | ✅ | Fault Campaign Runner: YAML campaigns → simulator / publisher fault APIs |
 | `services/dfm` | `rom_dfm` (Rust) | ✅ | Diagnostic Fault Manager: fault-lib `dfm_bin` + guardian fault events (uProtocol) → fault records |
-| `services/opensovd` | – | ✅ TODO | Eclipse OpenSOVD server |
+| `services/opensovd` | `rom-opensovd` (Rust) | ✅ | Eclipse OpenSOVD server: SOVD entities + DFM faults (`/sovd/v1/apps/battery_guardian/faults`) |
 | `services/evidence-collector` | `evidence_collector` | ✅ TODO | Evidence Collector → verdicts |
 | `MXChip/AZ3166` | – (C firmware) | – | AZ3166 board on Eclipse ThreadX: sensor telemetry over MQTT, guardian state on its OLED |
 
 ## Quick start
 
 ```bash
-make guardian                    # databroker + simulator + vss-uprotocol-client + guardian + dfm, shows guardian logs
+make guardian                    # databroker + simulator + vss-uprotocol-client + guardian + dfm + opensovd, shows guardian logs
 SIM_PERIOD_S=30 make guardian    # faster wave (30 s instead of 120 s)
 make down                        # stop everything
 ```
@@ -47,14 +47,19 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every PR: `m
 | Command | What it does |
 |---|---|
 | `make help` | list all commands |
+| `make mqtt-restart` | recreate mosquitto (fresh broker, host port 1883 re-published). `up`, `guardian`, `adapter` and `hw` do this first, so the broker is always reachable from the board and your laptop; it fails loudly if something else holds port 1883 |
 | `make up` | start databroker + mosquitto in the background |
-| `make guardian` | databroker + simulator + vss-uprotocol-client + guardian + dfm, follow guardian logs |
+| `make guardian` | databroker + simulator + vss-uprotocol-client + guardian + dfm + opensovd, follow guardian logs |
 | `make dfm-faults` | fault records in the running DFM as JSON |
 | `make dfm-fixtures` | regenerate the DFM test fixtures for OpenSOVD (`services/dfm/fixtures`) |
 | `make images` | build all service images `localhost/rom/<service>:dev` |
 | `make hw` | hardware run: AZ3166 → mosquitto → adapter → databroker → vss-uprotocol-client → guardian (no simulator), follow adapter + guardian logs |
 | `make adapter` | MQTT → KUKSA adapter in the foreground |
+| `make sovd` | DFM + Eclipse OpenSOVD server in the background (SOVD REST on `localhost:7690/sovd`) |
+| `make sovd-faults` | guardian faults from the DFM over SOVD |
 | `make sim` | sine-wave simulator into KUKSA (foreground) |
+| `make campaigns` | list the bundled fault campaigns |
+| `make campaign C=thermal_runaway` | run a fault campaign against the running stack (`make guardian` first) |
 | `make sim-up` | databroker + simulator in the background |
 | `make kuksa` | interactive kuksa-client shell (`getValue Vehicle.Powertrain.TractionBattery.Temperature.Max`) |
 | `make logs` | follow databroker, mosquitto and simulator logs |
@@ -82,11 +87,40 @@ pytest -q
 | `KUKSA_HOST` / `KUKSA_PORT` | `127.0.0.1` / `55555` | all |
 | `MQTT_HOST` / `MQTT_PORT` | `localhost` / `1883` | all |
 | `MQTT_HOST_PORT` | `1883` | compose mosquitto host port (`make`) |
-| `SIM_HZ`, `SIM_PERIOD_S`, `SIM_MIN_C`, `SIM_MAX_C` | `2`, `120`, `30`, `69` | simulator |
+| `SIM_HZ`, `SIM_PERIOD_S`, `SIM_MIN_C`, `SIM_MAX_C`, `SIM_SEED` | `2`, `120`, `30`, `69`, `0` | simulator |
+| `SIM_API_HOST` / `SIM_API_PORT` | `127.0.0.1` / `8080` | simulator fault API (`0` = off) |
+| `FAULT_API_HOST` / `FAULT_API_PORT` | `127.0.0.1` / unset (off) | vss-uprotocol-client transport-fault API |
+| `SIMULATOR_URL` / `PUBLISHER_URL` | `http://127.0.0.1:8080` / – | fault-injector |
 | `WARN_C`, `CRIT_C` | `38`, `45` | guardian |
 | `STALE_MS`, `STUCK_S`, `MIN_PLAUSIBLE_C`, `MAX_PLAUSIBLE_C` | `2000`, `10`, `-40`, `150` | guardian (`STALE_MS` is also the uProtocol TTL) |
 | `VSS_SOURCE_PATH` | `Vehicle.Powertrain.TractionBattery.Temperature.Max` | vss-uprotocol-client |
 | `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_MODE`, `ZENOH_CONNECT`, `ZENOH_LISTEN` | `rom-vehicle`, `zenoh`, `peer`, –, – | vss-uprotocol-client, guardian |
+
+## Fault injection
+
+The simulator writes **four battery cells** (`Vehicle.Powertrain.TractionBattery.Cells.Cell1..4.Temperature`, a custom
+overlay in [`infra/vss/rom_cells.json`](infra/vss/rom_cells.json) that the databroker loads next to the standard VSS)
+and `Temperature.Max` = the hottest cell written. The guardian watches **every cell** (uProtocol `…/1001/1/8002`)
+and reports DFM faults per cell on `…/1002/1/8003`; see [`docs/diagnostics-4-cells.md`](docs/diagnostics-4-cells.md).
+
+Faults are injected into the running stack over HTTP, by hand or by the Fault Campaign Runner:
+
+```bash
+make guardian                                   # stack up; fault APIs on 127.0.0.1:8080 (simulator) and :8081 (publisher)
+make campaigns                                  # bundled campaigns
+make campaign C=thermal_runaway                 # run one; watch the guardian state change in the guardian logs
+curl -XPOST localhost:8080/faults -d '{"type":"stuck","cell":1}'      # or by hand
+curl -XDELETE localhost:8080/faults
+```
+
+| Where | Faults | Docs |
+|---|---|---|
+| simulator | signal: stuck · spike · drift · out_of_range, source: dropout · replay_interruption | [`services/simulator`](services/simulator/README.md) |
+| vss-uprotocol-client | transport: drop · reorder · duplicate · delay | [`services/vss-uprotocol-client`](services/vss-uprotocol-client/README.md) |
+| fault-injector | YAML campaigns: hazard, safety goal, faults, expected state, `max_detect_ms`, seed | [`services/fault-injector`](services/fault-injector/README.md) |
+
+The control APIs have **no authentication**; compose publishes them on `127.0.0.1` only. Do not expose them on a
+shared network.
 
 ## Guardian states
 
@@ -221,6 +255,7 @@ flowchart LR
   CANP --> KDB
   KDB --> PUB[VSS uProtocol Publisher]
   FI[Fault Campaign Runner] -->|inject| PUB
+  FI -->|inject| SIM
   PUB -->|uProtocol / Zenoh| G[Battery Thermal Guardian]
   G -->|state · heartbeat · mitigation over uProtocol| DISP[Display / actuator]
   G --> DFM[DFM fault records]
@@ -239,7 +274,9 @@ flowchart LR
 - [x] Eclipse ThreadX firmware on AZ3166 publishing sensor telemetry over MQTT
 - [x] Containerized dev stack, `make` shortcuts, unit tests per component
 - [x] uProtocol extracted into a reusable library (`libs/rom-uprotocol`); every component is its own pip package, services have their own image (ready for Ankaios)
-- [x] Placeholder services with their own images: Fault Campaign Runner, DFM, OpenSOVD, Evidence Collector (build, start, log `not_implemented`)
+- [x] Placeholder services with their own images: DFM, OpenSOVD, Evidence Collector (build, start, log `not_implemented`)
+- [x] Simulator with 4 battery cells (custom VSS overlay) and runtime fault injection over HTTP
+- [x] Fault Campaign Runner: YAML campaigns with a seed, signal / source / transport faults, `run_id` on every log line
 - [x] Guardian logs the uProtocol `msg_id` / `seq` that caused each state change
 - [x] AZ3166 firmware reconnects to the MQTT broker automatically (Last Will `offline`, retained `online`)
 
@@ -251,14 +288,15 @@ flowchart LR
 - [x] Guardian state shown on the device display (display command over MQTT, `G:NO LINK` after 5 s)
 
 #### 2. Fault campaigns
-- [ ] Fault Campaign Runner inside the uProtocol publisher, campaigns described in YAML with a seed (deterministic, replayable)
-- [ ] Transport faults: delay · duplicate · drop · reorder
-- [ ] Signal faults: stuck · spike · drift · out-of-range
-- [ ] Source faults: dropout · replay interruption
-- [ ] Combined multi-fault scenarios
+- [x] Fault Campaign Runner: campaigns described in YAML with a seed (deterministic, replayable); it drives the simulator and the uProtocol publisher over HTTP
+- [x] Transport faults: delay · duplicate · drop · reorder
+- [x] Signal faults: stuck · spike · drift · out-of-range
+- [x] Source faults: dropout · replay interruption
+- [x] Combined multi-fault scenarios (one campaign, more can be added as YAML)
+- [ ] Campaigns for duplicate / reorder once the guardian detects them (Guardian section)
 
 #### 3. Guardian
-- [x] Publish fault events over uProtocol (`up://rom-vehicle/1002/1/8001` → DFM, Python ↔ Rust `up-transport-zenoh`)
+- [x] Publish fault events over uProtocol (`up://rom-vehicle/1002/1/8003` → DFM, Python ↔ Rust `up-transport-zenoh`)
 - [ ] Publish state, heartbeat and mitigation events over uProtocol
 - [ ] Detect duplicate / reordered messages and implausible rate of change
 - [ ] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event

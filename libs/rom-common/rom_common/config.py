@@ -33,6 +33,8 @@ class Thresholds:
     stuck_s: float
     min_plausible_c: float
     max_plausible_c: float
+    imbalance_c: float      # hottest - coldest valid cell above this ...
+    imbalance_s: float      # ... for this long -> cell_imbalance
 
 
 def thresholds() -> Thresholds:
@@ -45,4 +47,6 @@ def thresholds() -> Thresholds:
         stuck_s=float(_env("STUCK_S", "10")),
         min_plausible_c=float(_env("MIN_PLAUSIBLE_C", "-40")),
         max_plausible_c=float(_env("MAX_PLAUSIBLE_C", "150")),
+        imbalance_c=float(_env("IMBALANCE_C", "10")),
+        imbalance_s=float(_env("IMBALANCE_S", "2")),
     )

@@ -20,7 +20,7 @@ from uprotocol.v1.ustatus_pb2 import UStatus  # noqa: E402
 from rom_common.jsonlog import JsonLogger  # noqa: E402
 from rom_uprotocol import config, uris as topics  # noqa: E402
 from rom_uprotocol import contract as contracts  # noqa: E402
-from rom_uprotocol.publisher import SignalPublisher, json_message  # noqa: E402
+from rom_uprotocol.publisher import SignalPublisher  # noqa: E402
 from rom_uprotocol.subscriber import UpSignalSource  # noqa: E402
 from rom_uprotocol.transport import available_transports, make_transport, register_transport  # noqa: E402
 from rom_uprotocol.transport.zenoh import (  # noqa: E402
@@ -103,15 +103,6 @@ def test_publisher_builds_publish_messages_with_json_payload_and_seq():
     assert [e["event"] for e in events()] == ["published", "published"]
 
 
-def test_guardian_fault_topic_and_json_message():
-    topic = topics.guardian_fault_topic("v")
-    assert to_zenoh_key(topic, None, "v") == "up/v/1002/0/1/8001/{}/{}/{}/{}/{}"  # what services/dfm subscribes to
-    msg = json_message(topic, '{"fault":"BatteryTempSignalStale"}')
-    assert msg.attributes.type == UMessageType.UMESSAGE_TYPE_PUBLISH and msg.attributes.source == topic
-    assert msg.attributes.payload_format == UPayloadFormat.UPAYLOAD_FORMAT_JSON
-    assert json.loads(msg.payload)["fault"] == "BatteryTempSignalStale"
-
-
 def test_publisher_logs_failed_send_and_keeps_going():
     pub, events = make_publisher(lambda m: UStatus(code=UCode.INTERNAL, message="zenoh down"))
     pub.publish(VSS_PATH, 50.0, 0)
@@ -191,3 +182,85 @@ def test_publish_reaches_subscriber_over_real_zenoh():
     finally:
         sub_t.close_sync()
         pub_t.close_sync()
+
+
+# --- 4 cells and guardian fault events --------------------------------------------------------------------------
+from rom_uprotocol.subscriber import UpCellsSource, UpFaultSource  # noqa: E402
+
+
+def _json_msg(topic, payload, fmt=UPayloadFormat.UPAYLOAD_FORMAT_JSON):
+    return UMessageBuilder.publish(topic).build_from_upayload(UPayload.pack_from_data_and_format(payload, fmt))
+
+
+def test_cells_payload_roundtrip_keeps_missing_cells_missing():
+    raw = contracts.build_cells_msg({4: 29.9, 1: 31.2, 2: 30.1}, 7, 1000, 990, "camp-1")
+    assert json.loads(raw)["cells"] == {"1": 31.2, "2": 30.1, "4": 29.9}
+    msg = contracts.parse_cells_msg(raw)
+    assert (msg.cells, msg.seq, msg.ts_ms, msg.source_ts_ms, msg.run_id) == (
+        {1: 31.2, 2: 30.1, 4: 29.9}, 7, 1000, 990, "camp-1")
+    assert contracts.parse_cells_msg(contracts.build_cells_msg({1: 30.0}, 1, 0, 0)).run_id is None
+
+
+@pytest.mark.parametrize("bad", [
+    b'{"cells":{},"seq":1,"ts_ms":0,"source_ts_ms":0}',
+    b'{"cells":{"5":30},"seq":1,"ts_ms":0,"source_ts_ms":0}',
+    b'{"cells":{"x":30},"seq":1,"ts_ms":0,"source_ts_ms":0}',
+    b'{"cells":{"1":"hot"},"seq":1,"ts_ms":0,"source_ts_ms":0}',
+    b'{"cells":{"1":30},"seq":"a","ts_ms":0,"source_ts_ms":0}',
+    b'{"cells":{"1":30},"seq":1,"ts_ms":0,"source_ts_ms":0,"run_id":5}',
+])
+def test_cells_payload_rejects(bad):
+    with pytest.raises(contracts.ContractError):
+        contracts.parse_cells_msg(bad)
+
+
+def test_fault_event_roundtrip_and_environment_data():
+    event = contracts.FaultEvent(code="battery_guardian.cell2.signal_stuck", stage="FAILED", ts_ms=5, cell=2,
+                                 temp_c=31.2, cells="31.2,30.1,,29.9", reason="stuck signal", seq=42,
+                                 msg_id="01a1", run_id=None)
+    assert contracts.parse_fault_event(contracts.build_fault_event(event)) == event
+    assert event.environment_data() == {"cell": "2", "temp_c": "31.2", "cells": "31.2,30.1,,29.9",
+                                        "reason": "stuck signal", "seq": "42", "msg_id": "01a1", "ts_ms": "5"}
+
+
+@pytest.mark.parametrize("change", [{"code": "battery_guardian.nope"}, {"stage": "MAYBE"}, {"ts_ms": None},
+                                    {"cell": 1.5}, {"temp_c": "hot"}])
+def test_fault_event_rejects(change):
+    data = {"code": "battery_guardian.signal_stale", "stage": "PASSED", "ts_ms": 1, **change}
+    with pytest.raises(contracts.ContractError):
+        contracts.parse_fault_event(json.dumps(data))
+    if "code" in change or "stage" in change:
+        with pytest.raises(contracts.ContractError):
+            contracts.build_fault_event(contracts.FaultEvent(**{"code": data["code"], "stage": data["stage"], "ts_ms": 1}))
+
+
+def test_cell_and_fault_topics():
+    assert UriSerializer.serialize(topics.battery_cells_topic("v")) == "//v/1001/1/8002"
+    assert UriSerializer.serialize(topics.guardian_fault_topic("v")) == "//v/1002/1/8003"
+    assert to_zenoh_key(topics.guardian_fault_topic("v"), None, "v") == "up/v/1002/0/1/8003/{}/{}/{}/{}/{}"
+
+
+def test_publish_cells_goes_through_the_interceptors():
+    sent, seen = [], []
+    ok = UStatus(code=UCode.OK)
+
+    def spy(message, forward):
+        seen.append(message)
+        return forward(message)
+
+    pub = SignalPublisher(lambda m: sent.append(m) or ok, topics.battery_cells_topic("v"), 2000, interceptors=[spy])
+    pub.publish_cells({1: 30.0, 3: 29.0}, 11, "r1")
+    assert len(seen) == len(sent) == 1
+    assert contracts.parse_cells_msg(sent[0].payload).cells == {1: 30.0, 3: 29.0}
+
+
+def test_cells_and_fault_sources_parse_and_reject():
+    cells, faults, rejects = [], [], []
+    UpCellsSource(None, cells.append, rejects.append).handle(
+        _json_msg(topics.battery_cells_topic("v"), contracts.build_cells_msg({2: 30.5}, 3, 10, 5, "r1")))
+    UpCellsSource(None, cells.append, rejects.append).handle(_json_msg(topics.battery_cells_topic("v"), b"{}"))
+    event = contracts.FaultEvent(code="battery_guardian.signal_stale", stage="FAILED", ts_ms=1)
+    UpFaultSource(None, faults.append, rejects.append).handle(
+        _json_msg(topics.guardian_fault_topic("v"), contracts.build_fault_event(event)))
+    assert [(s.cells, s.seq, s.run_id) for s in cells] == [({2: 30.5}, 3, "r1")] and cells[0].msg_id
+    assert faults == [event] and len(rejects) == 1

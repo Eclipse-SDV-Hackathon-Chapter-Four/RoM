@@ -14,7 +14,7 @@ Interceptors sit between the publisher and `send`, so the message flow can be ch
 Each interceptor is called as interceptor(message, forward) -> UStatus and decides whether and
 how often to call forward(message); the last forward is `send`.
 """
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Optional, Sequence
 
 from uprotocol.communication.upayload import UPayload
 from uprotocol.transport.builder.umessagebuilder import UMessageBuilder
@@ -26,17 +26,10 @@ from uprotocol.v1.ustatus_pb2 import UStatus
 
 from rom_common import clock
 
-from .contract import build_signal_msg
+from .contract import build_cells_msg, build_signal_msg
 
 Send = Callable[[UMessage], UStatus]
 Interceptor = Callable[[UMessage, Send], UStatus]
-
-
-def json_message(topic: UUri, payload: "bytes | str") -> UMessage:
-    """Publish message with a JSON payload (e.g. guardian fault events)."""
-    data = payload.encode() if isinstance(payload, str) else payload
-    return UMessageBuilder.publish(topic).build_from_upayload(
-        UPayload.pack_from_data_and_format(data, UPayloadFormat.UPAYLOAD_FORMAT_JSON))
 
 
 def _chain(send: Send, interceptors: Sequence[Interceptor]) -> Send:
@@ -47,7 +40,12 @@ def _chain(send: Send, interceptors: Sequence[Interceptor]) -> Send:
 
 
 class SignalPublisher:
-    """publish(vss_path, value, source_ts_ms) -> UStatus; logs published / publish_failed if given a log."""
+    """Publishes JSON payloads on one topic through the interceptor chain; logs published / publish_failed.
+
+    publish(vss_path, value, source_ts_ms)         one VSS value       (build_signal_msg)
+    publish_cells(cells, source_ts_ms, run_id)     one cell update     (build_cells_msg)
+    publish_json(make_payload, **log_fields)       anything else: make_payload(seq, ts_ms) -> bytes
+    """
 
     def __init__(self, send: Send, topic: UUri, ttl_ms: int, log=None,
                  interceptors: Sequence[Interceptor] = ()):
@@ -59,24 +57,35 @@ class SignalPublisher:
         self.published = 0
         self.failed = 0
 
-    def build(self, vss_path: str, value: float, source_ts_ms: int) -> UMessage:
+    def build_json(self, make_payload: Callable[[int, int], bytes]) -> UMessage:
         self.seq += 1
-        payload = build_signal_msg(vss_path, value, self.seq, clock.now_ms(), source_ts_ms)
         return (UMessageBuilder.publish(self._topic)
                 .with_ttl(self._ttl_ms)
                 .build_from_upayload(UPayload.pack_from_data_and_format(
-                    payload, UPayloadFormat.UPAYLOAD_FORMAT_JSON)))
+                    make_payload(self.seq, clock.now_ms()), UPayloadFormat.UPAYLOAD_FORMAT_JSON)))
 
-    def publish(self, vss_path: str, value: float, source_ts_ms: int) -> UStatus:
-        status = self._send(self.build(vss_path, value, source_ts_ms))
+    def publish_json(self, make_payload: Callable[[int, int], bytes], **log_fields) -> UStatus:
+        status = self._send(self.build_json(make_payload))
         if status.code != UCode.OK:
             self.failed += 1
-            self._emit("publish_failed", seq=self.seq, code=UCode.Name(status.code), error=status.message)
+            self._emit("publish_failed", seq=self.seq, resource=self._topic.resource_id,
+                       code=UCode.Name(status.code), error=status.message)
         else:
             self.published += 1
-            self._emit("published", seq=self.seq, value=value, vss_path=vss_path,
-                       source_ts_ms=source_ts_ms, published=self.published, failed=self.failed)
+            self._emit("published", seq=self.seq, resource=self._topic.resource_id, **log_fields,
+                       published=self.published, failed=self.failed)
         return status
+
+    def build(self, vss_path: str, value: float, source_ts_ms: int) -> UMessage:
+        return self.build_json(lambda seq, ts: build_signal_msg(vss_path, value, seq, ts, source_ts_ms))
+
+    def publish(self, vss_path: str, value: float, source_ts_ms: int) -> UStatus:
+        return self.publish_json(lambda seq, ts: build_signal_msg(vss_path, value, seq, ts, source_ts_ms),
+                                 value=value, vss_path=vss_path, source_ts_ms=source_ts_ms)
+
+    def publish_cells(self, cells: Mapping[int, float], source_ts_ms: int, run_id: Optional[str] = None) -> UStatus:
+        return self.publish_json(lambda seq, ts: build_cells_msg(cells, seq, ts, source_ts_ms, run_id),
+                                 cells={str(c): v for c, v in sorted(cells.items())}, source_ts_ms=source_ts_ms)
 
     def _emit(self, event: str, **fields) -> None:
         if self._log is not None:

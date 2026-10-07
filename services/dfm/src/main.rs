@@ -1,7 +1,7 @@
 // Made with Claude (Claude Code, Anthropic)
 //! RoM DFM bridge: guardian fault events -> fault-lib Reporter -> dfm_bin, and a query CLI.
 //!
-//!   rom-dfm report               uProtocol up://<UP_AUTHORITY>/1002/1/8001 -> DFM (default)
+//!   rom-dfm report               uProtocol up://<UP_AUTHORITY>/1002/1/8003 -> DFM (default)
 //!   rom-dfm replay <events.jsonl> same events from a file (fixtures, OpenSOVD integration tests)
 //!   rom-dfm query [--stable]     DFM fault records as JSON (--stable: without timestamps)
 
@@ -10,7 +10,7 @@ use std::{collections::HashMap, env, fs, str::FromStr, sync::{Arc, mpsc}, thread
 use async_trait::async_trait;
 
 use common::{
-    fault::{LifecyclePhase, LifecycleStage},
+    fault::{FaultId, LifecyclePhase, LifecycleStage},
     ids::SourceId,
     types::{MetadataVec, to_static_short_string},
 };
@@ -25,13 +25,17 @@ use serde_json::{Value, json};
 use up_rust::{UListener, UMessage, UTransport, UUri};
 use up_transport_zenoh::{UPTransportZenoh, zenoh_config};
 
-/// Guardian fault topic (libs/rom-uprotocol: UP_GUARDIAN_UE_ID 0x1002, UP_RESOURCE_GUARDIAN_FAULT 0x8001)
-const FAULT_TOPIC: &str = "1002/1/8001";
-const ENV_KEYS: [&str; 5] = ["temp_c", "reason", "seq", "msg_id", "ts_ms"];
+/// Guardian fault topic (libs/rom-uprotocol: UP_GUARDIAN_UE_ID 0x1002, UP_RESOURCE_GUARDIAN_FAULT 0x8003)
+const FAULT_TOPIC: &str = "1002/1/8003";
+/// Environment data keys, as rom_uprotocol.contract.FaultEvent.environment_data() (8 = fault-lib MetadataVec capacity)
+const ENV_KEYS: [&str; 8] = ["cell", "temp_c", "cells", "reason", "seq", "msg_id", "ts_ms", "run_id"];
+
+fn now_ms() -> u128 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis())
+}
 
 fn log(event: &str, fields: Value) {
-    let ts_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
-    let mut rec = json!({"ts_ms": ts_ms, "component": "dfm", "event": event});
+    let mut rec = json!({"ts_ms": now_ms(), "component": "dfm", "event": event});
     if let (Some(r), Some(f)) = (rec.as_object_mut(), fields.as_object()) {
         r.extend(f.clone());
     }
@@ -42,24 +46,33 @@ fn var(name: &str, default: &str) -> String {
     env::var(name).unwrap_or_else(|_| default.to_string())
 }
 
-/// Guardian fault event (libs/rom-common contracts.build_fault_event) -> (fault name, stage, env data).
-fn parse_event(payload: &[u8]) -> Result<(String, LifecycleStage, Vec<(&'static str, String)>), String> {
+struct Event {
+    code: String,
+    stage: LifecycleStage,
+    env: Vec<(&'static str, String)>,
+    run_id: Value,
+    ts_ms: Option<u64>,
+}
+
+/// Guardian fault event (rom_uprotocol.contract.build_fault_event); env data skips null / empty, all strings.
+fn parse_event(payload: &[u8]) -> Result<Event, String> {
     let v: Value = serde_json::from_slice(payload).map_err(|e| format!("invalid_json: {e}"))?;
-    let fault = v["fault"].as_str().ok_or("missing_fault")?.to_string();
+    let code = v["code"].as_str().ok_or("missing_code")?.to_string();
     let stage = match v["stage"].as_str() {
-        Some("Failed") => LifecycleStage::Failed,
-        Some("Passed") => LifecycleStage::Passed,
+        Some("FAILED") => LifecycleStage::Failed,
+        Some("PASSED") => LifecycleStage::Passed,
         other => return Err(format!("unknown_stage: {other:?}")),
     };
     let env = ENV_KEYS
         .iter()
         .filter_map(|&k| match &v[k] {
             Value::Null => None,
+            Value::String(s) if s.is_empty() => None,
             Value::String(s) => Some((k, s.clone())),
             other => Some((k, other.to_string())),
         })
         .collect();
-    Ok((fault, stage, env))
+    Ok(Event { code, stage, env, run_id: v["run_id"].clone(), ts_ms: v["ts_ms"].as_u64() })
 }
 
 struct Bridge {
@@ -96,7 +109,10 @@ impl Bridge {
         let catalog = FaultApi::get_fault_catalog();
         let reporters = catalog
             .descriptors()
-            .map(|d| (d.name.to_string(), Reporter::new(&d.id, config.clone()).expect("fault in catalog")))
+            .filter_map(|d| match &d.id {
+                FaultId::Text(code) => Some((code.to_string(), Reporter::new(&d.id, config.clone()).expect("fault in catalog"))),
+                _ => None,
+            })
             .collect();
         let path = catalog.id().to_string();
         log("ready", json!({"path": path, "faults": catalog.len()}));
@@ -104,22 +120,29 @@ impl Bridge {
     }
 
     fn handle(&mut self, payload: &[u8]) {
-        let (fault, stage, env) = match parse_event(payload) {
+        let Event { code, stage, env, run_id, ts_ms } = match parse_event(payload) {
             Ok(e) => e,
             Err(reason) => return log("rejected", json!({"reason": reason})),
         };
-        let Some(reporter) = self.reporters.get_mut(&fault) else {
-            return log("rejected", json!({"reason": "unknown_fault", "fault": fault}));
+        let Some(reporter) = self.reporters.get_mut(&code) else {
+            return log("rejected", json!({"reason": "unknown_code", "code": code}));
         };
         let mut record = reporter.create_record(stage);
         for (k, v) in &env {
-            if let (Ok(k), Ok(v)) = (to_static_short_string(k), to_static_short_string(v)) {
-                let _ = record.env_data.push((k, v));
+            match (to_static_short_string(k), to_static_short_string(v)) {
+                (Ok(k), Ok(v)) if record.env_data.push((k, v)).is_ok() => {}
+                _ => log("env_dropped", json!({"code": code, "key": k, "value": v})),  // > 64 bytes
             }
         }
+        let stage = format!("{stage:?}").to_uppercase();
         match reporter.publish(&self.path, record) {
-            Ok(()) => log("fault_record", json!({"fault": fault, "stage": format!("{stage:?}"), "env": env_json(&env)})),
-            Err(e) => log("publish_failed", json!({"fault": fault, "error": format!("{e:?}")})),
+            Ok(()) => {
+                // write latency for the evidence collector: guardian edge (ts_ms) -> handed to the DFM
+                let latency_ms = ts_ms.map(|t| now_ms() as i128 - t as i128);
+                log("fault_record", json!({"code": code, "stage": stage, "run_id": run_id,
+                                           "latency_ms": latency_ms, "env": env_json(&env)}))
+            }
+            Err(e) => log("publish_failed", json!({"code": code, "stage": stage, "run_id": run_id, "error": format!("{e:?}")})),
         }
         // ponytail: the DFM polls every 10 ms and its iceoryx2 subscriber buffer is tiny, so a burst
         // (replay, or Passed+Failed in one tick) loses records; pace them. Raise the buffer in fault-lib to drop this.
@@ -228,12 +251,20 @@ mod tests {
 
     #[test]
     fn parses_guardian_event_and_rejects_bad_stage() {
-        let raw = br#"{"fault":"BatteryTempSignalStale","stage":"Failed","ts_ms":18000,"temp_c":30,"reason":"stale signal","seq":18,"msg_id":null}"#;
-        let (fault, stage, env) = parse_event(raw).expect("valid event");
-        assert_eq!((fault.as_str(), stage), ("BatteryTempSignalStale", LifecycleStage::Failed));
-        assert_eq!(env, vec![("temp_c", "30".into()), ("reason", "stale signal".into()), ("seq", "18".into()),
-                             ("ts_ms", "18000".into())]);
-        assert!(parse_event(br#"{"fault":"X","stage":"Maybe"}"#).is_err());
+        // services/dfm/README.md example
+        let raw = br#"{"code":"battery_guardian.cell3.signal_stuck","stage":"FAILED","ts_ms":1791367830419,"cell":3,
+            "temp_c":26.75,"cells":"26.75,25.59,23.39,23.42","reason":"stuck signal","seq":31,
+            "msg_id":"01a115d7-3974-7762-9130-3d31e9e56013","run_id":"sensor-stuck-cell3-01"}"#;
+        let e = parse_event(raw).expect("valid event");
+        assert_eq!((e.code.as_str(), e.stage), ("battery_guardian.cell3.signal_stuck", LifecycleStage::Failed));
+        assert_eq!(e.env, vec![("cell", "3".into()), ("temp_c", "26.75".into()), ("cells", "26.75,25.59,23.39,23.42".into()),
+                               ("reason", "stuck signal".into()), ("seq", "31".into()),
+                               ("msg_id", "01a115d7-3974-7762-9130-3d31e9e56013".into()), ("ts_ms", "1791367830419".into()),
+                               ("run_id", "sensor-stuck-cell3-01".into())]);
+        let passed = parse_event(br#"{"code":"battery_guardian.signal_stale","stage":"PASSED","ts_ms":1,"cell":null,"cells":""}"#)
+            .expect("valid event");
+        assert_eq!((passed.stage, passed.env), (LifecycleStage::Passed, vec![("ts_ms", "1".into())]));
+        assert!(parse_event(br#"{"code":"X","stage":"Failed"}"#).is_err());
         assert!(parse_event(b"nope").is_err());
     }
 }

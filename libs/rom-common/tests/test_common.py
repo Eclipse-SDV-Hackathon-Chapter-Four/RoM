@@ -26,15 +26,6 @@ def test_display_cmd_roundtrip_and_unknown_state():
         contracts.build_display_cmd("BOGUS", None, "x", 1, 1)
 
 
-def test_fault_event_matches_dfm_catalog_and_rejects_unknown():
-    catalog = json.load(open(__file__.rsplit("/libs/", 1)[0] + "/services/dfm/catalog/battery_guardian.json"))
-    assert {f["name"] for f in catalog["faults"]} == set(contracts.FAULTS)
-    raw = contracts.build_fault_event(contracts.FAULT_SIGNAL_STALE, contracts.FAILED, 1, 30.0, "stale signal", 4, "id")
-    assert json.loads(raw)["fault"] == "BatteryTempSignalStale"
-    with pytest.raises(contracts.ContractError):
-        contracts.build_fault_event("Bogus", contracts.FAILED, 1, None, "x", None, None)
-
-
 def test_threshold_defaults_and_env_override(monkeypatch):
     t = config.thresholds()
     assert (t.warn_c, t.crit_c, t.hyst_c, t.stale_ms) == (38.0, 45.0, 2.0, 2000)
@@ -73,3 +64,19 @@ def test_mqtt_client_subscribe_dispatch_and_publish():
     assert got == [("rom/sensor/battery/temp", b"x")]
     c.publish("a/b", "hi", qos=1, retain=True)
     c._client.publish.assert_called_with("a/b", "hi", qos=1, retain=True)
+
+
+def test_fault_codes_pack_and_per_cell():
+    assert contracts.cell_fault(2, "signal_stuck") == "battery_guardian.cell2.signal_stuck"
+    assert len(contracts.FAULT_CODES) == len(set(contracts.FAULT_CODES)) == 5 + 4 * 3
+    assert all(c.startswith(contracts.DFM_ENTITY + ".") for c in contracts.FAULT_CODES)
+    for cell, kind in ((0, "signal_stuck"), (5, "signal_stuck"), (1, "bogus")):
+        with pytest.raises(ValueError):
+            contracts.cell_fault(cell, kind)
+
+
+def test_imbalance_thresholds_default_and_env(monkeypatch):
+    t = config.thresholds()
+    assert (t.imbalance_c, t.imbalance_s) == (10.0, 2.0)
+    monkeypatch.setenv("IMBALANCE_C", "6")
+    assert config.thresholds().imbalance_c == 6.0
