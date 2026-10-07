@@ -3,7 +3,8 @@
 
     evidence-<name>.zip
     ├─ evidence/<record_id>.json   every evidence record
-    ├─ events.jsonl                only the raw lines the records point to (original line numbers kept)
+    ├─ events.jsonl                only the raw lines the records point to (original line numbers kept), plus
+    │                              their context lines (the guardian state before the run): enough to judge again
     ├─ safety_case.yaml            why each campaign exists
     ├─ report.html                 static report, opens without the server
     └─ manifest.json               {"name", "created_at", "algorithm": "sha256", "files": {name: sha256}, "how_to_check"}
@@ -30,6 +31,9 @@ def build(name: str, records: List[dict], events: Callable[[int, int], List[dict
         first, last = r.get("lines") or (0, -1)
         for e in events(first, last):
             lines[e["line"]] = e
+        for n in r.get("context_lines") or []:
+            for e in events(n, n):
+                lines[e["line"]] = e
     files["events.jsonl"] = "".join(json.dumps(lines[n], separators=(",", ":")) + "\n" for n in sorted(lines))
     files["safety_case.yaml"] = safety_case_text
     files["report.html"] = report_html(records, title=f"Evidence report: {name}")

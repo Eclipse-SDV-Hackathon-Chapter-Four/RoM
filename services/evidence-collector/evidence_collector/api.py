@@ -4,7 +4,9 @@
     GET /health                              200 when subscribed to the bus, else 503
     GET /evidence?run_id=&limit=             newest records first
     GET /evidence/summary?run_id=            pass rate, coverage per safety goal, slowest detection
-    GET /evidence/bundle.zip?run_id=         evidence bundle with SHA-256 manifest (all records, or one run_id)
+    GET /evidence/consistency?run_id=        reruns of the same campaign: same verdict? latency spread
+    GET /evidence/bundle.zip?run_id=&since=  evidence bundle with SHA-256 manifest (all records, one run_id, and/or
+                                             runs started at or after `since`, epoch ms)
     GET /evidence/{record_id}                one record
     GET /events?since=&limit=                raw bus messages (events.jsonl lines)
     GET /ui/, /ui/{record_id}                HTML pages
@@ -35,12 +37,16 @@ def create_app(store, safety_case_text: str, healthy: Callable[[], dict] = lambd
     def evidence_summary(run_id: Optional[str] = None):
         return report.summary(store.records(run_id))
 
+    @app.get("/evidence/consistency")
+    def evidence_consistency(run_id: Optional[str] = None):
+        return report.consistency(store.records(run_id))
+
     # declared before /evidence/{record_id}, or "bundle.zip" would be taken for a record id
     @app.get("/evidence/bundle.zip")
-    def evidence_bundle(run_id: Optional[str] = None):
+    def evidence_bundle(run_id: Optional[str] = None, since: int = Query(0, ge=0)):
         if run_id is not None and not SAFE_ID.match(run_id):
             raise HTTPException(400, "invalid run_id")
-        records = store.records(run_id)
+        records = [r for r in store.records(run_id) if (r.get("started_at") or 0) >= since]
         if not records:
             raise HTTPException(404, "no evidence records" + (f" for {run_id}" if run_id else ""))
         name = run_id or "all"

@@ -60,6 +60,36 @@ def summary(records: List[dict]) -> dict:
             "slowest_detection": {g: {"latency_ms": v, "record_id": rid} for g, (v, rid) in sorted(slowest.items())}}
 
 
+def consistency(records: List[dict]) -> dict:
+    """Reruns of the same campaign (run_id): same verdict every time? Detection latency spread per expected fault.
+
+    {run_id: {"executions", "verdicts": {verdict: n}, "consistent", "latency_ms": {code: {"min", "max"}}}}
+    INCONCLUSIVE runs are listed but do not break consistency (they prove nothing either way)."""
+    by_run = defaultdict(list)
+    for r in records:
+        by_run[r["run_id"]].append(r)
+    out = {}
+    for run_id, rs in sorted(by_run.items()):
+        decided = {r["verdict"] for r in rs if r["verdict"] != "INCONCLUSIVE"}
+        spread = defaultdict(list)
+        for r in rs:
+            for f in (r.get("detection") or {}).get("faults", []):
+                if f.get("latency_ms") is not None:
+                    spread[f["code"]].append(f["latency_ms"])
+        out[run_id] = {"executions": len(rs), "verdicts": dict(Counter(r["verdict"] for r in rs)),
+                       "consistent": len(decided) <= 1,
+                       "latency_ms": {c: {"min": min(v), "max": max(v)} for c, v in sorted(spread.items())}}
+    return out
+
+
+def _rerun_row(run_id: str, v: dict) -> str:
+    verdicts = " · ".join(f"{_verdict(x)} {n}" for x, n in sorted(v["verdicts"].items()))
+    spread = "<br>".join(f"<code>{escape(c)}</code> {l['min']}–{l['max']} ms" for c, l in v["latency_ms"].items())
+    ok = "PASS" if v["consistent"] else "FAIL"
+    return (f"<tr><td>{escape(run_id)}</td><td>{v['executions']}</td><td>{verdicts}</td>"
+            f"<td class={ok}>{'yes' if v['consistent'] else 'NO'}</td><td>{spread}</td></tr>")
+
+
 def report_html(records: List[dict], title: str = "Evidence report", link=None) -> str:
     """Summary + one row per record. link(record_id) -> href, or None for a self-contained file."""
     s = summary(records)
@@ -82,8 +112,13 @@ def report_html(records: List[dict], title: str = "Evidence report", link=None) 
                     f"<td>{'<br>'.join(escape(x['text']) for x in r.get('reasons', [])) or '–'}</td></tr>")
     table = ("<h2>Runs</h2><div class=scroll><table><tr><th>Run</th><th>Goal</th><th>Verdict</th><th>Detection</th>"
              f"<th>Reasons</th></tr>{''.join(rows)}</table></div>")
+    reruns = {k: v for k, v in consistency(records).items() if v["executions"] > 1}
+    rerun_rows = "".join(_rerun_row(k, v) for k, v in reruns.items())
+    rerun_table = ("<h2>Reruns: verdict consistency</h2><div class=scroll><table><tr><th>Campaign</th><th>Runs</th>"
+                   f"<th>Verdicts</th><th>Consistent</th><th>Detection latency</th></tr>{rerun_rows}</table></div>"
+                   if reruns else "")
     details = "" if link else "".join(f'<div id="{escape(r["record_id"])}">{record_body(r)}</div>' for r in records)
-    return _page(title, head + cov_table + table + details)
+    return _page(title, head + cov_table + rerun_table + table + details)
 
 
 def record_body(r: dict) -> str:
