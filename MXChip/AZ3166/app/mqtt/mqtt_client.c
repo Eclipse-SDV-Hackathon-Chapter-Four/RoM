@@ -253,6 +253,11 @@ static void mqtt_thread_work(NX_IP *ip_ptr, NX_PACKET_POOL *pool_ptr){
 
     while (1){
         if (!connected){
+            if (server_ip.nxd_ip_address.v4 == 0){
+                printf("MQTT_LOCAL_BROKER_IP is not set: define it in cloud_config_local.h.\r\n");
+                tx_thread_sleep(MQTT_RECONNECT_DELAY_MAX_S * TX_TIMER_TICKS_PER_SECOND);
+                continue;
+            }
             if (mqtt_open_session(&server_ip) != NXD_MQTT_SUCCESS){
                 printf("MQTT retry in %u s.\r\n", (unsigned)retry_delay_s);
                 tx_thread_sleep(retry_delay_s * TX_TIMER_TICKS_PER_SECOND);

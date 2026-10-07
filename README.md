@@ -107,14 +107,17 @@ git submodule update --init   # fetches threadx + netxduo if you haven't already
 bash scripts/build.sh starter   # or: bash scripts/build.sh mqtt
 ```
 
-Wi-Fi credentials are never committed. For the `mqtt` app, create a git-ignored `MXChip/AZ3166/app/mqtt/cloud_config_local.h` next to `cloud_config.h` with your own values:
+Wi-Fi credentials and board-specific settings are never committed. For the `mqtt` app, create a git-ignored `MXChip/AZ3166/app/mqtt/cloud_config_local.h` next to `cloud_config.h` with your own values:
 
 ```c
 #define WIFI_SSID     "your-ssid"
 #define WIFI_PASSWORD "your-password"
+#define MQTT_LOCAL_BROKER_IP (IP_ADDRESS(192, 168, 1, 10))  // LAN IP of your Mosquitto broker (required)
+#define MQTT_CLIENT_SUFFIX   "02"                           // optional, default "01": MQTT client ID is ThreadXAZ3166-<suffix>
+#define MQTT_DEVICE_ID       "az3166-02"                    // optional, default "az3166-01": device_id in every sensor message
 ```
 
-Also set the IP of your broker (`MQTT_LOCAL_BROKER_IP`) in `cloud_config.h` (use your laptop's LAN IP; do not commit environment-specific values). For the `starter` app, fill in `app/starter/cloud_config.h` locally and do not commit it.
+The broker IP has no default: without it the board logs `MQTT_LOCAL_BROKER_IP is not set` and does not connect. Give every board its own `MQTT_CLIENT_SUFFIX` (two clients with the same ID kick each other off the broker) and its own `MQTT_DEVICE_ID` (the adapter tracks `seq` per `device_id`). `MQTT_CLIENT_ID` can also be defined as a whole. For the `starter` app, fill in `app/starter/cloud_config.h` locally and do not commit it.
 
 The ThreadX / NetX Duo submodules are pinned to known-working revisions (newer 6.5.x-era revisions fail DHCP with this WICED stack). Do not update them.
 

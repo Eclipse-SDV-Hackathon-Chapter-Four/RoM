@@ -51,10 +51,22 @@ typedef enum
 // MQTT Config
 // ----------------------------------------------------------------------------
 #define MQTT_CLIENT_NAME     "ThreadXAZ3166" //Change to unique name if you run multiple boards.
-// IP of the Mosquitto broker on your hackathon LAN. See README for how to set one up.
-#define MQTT_LOCAL_BROKER_IP (IP_ADDRESS(192, 168, 88, 250))
+// Board- and site-specific values live in cloud_config_local.h (git-ignored), next to the Wi-Fi credentials:
+//   #define MQTT_LOCAL_BROKER_IP (IP_ADDRESS(192, 168, 1, 10))  // LAN IP of your Mosquitto broker (see README)
+//   #define MQTT_CLIENT_SUFFIX   "02"                           // unique per board
+//   #define MQTT_DEVICE_ID       "az3166-02"                    // unique per board
+// MQTT_CLIENT_ID can also be defined there as a whole. Without an override the board uses the defaults below
+// and will not connect: the broker IP has no usable default (0.0.0.0 makes the board log a configuration error).
+#ifndef MQTT_LOCAL_BROKER_IP
+#define MQTT_LOCAL_BROKER_IP (IP_ADDRESS(0, 0, 0, 0))
+#endif
 // Unique per board: two clients with the same ID kick each other off the broker.
-#define MQTT_CLIENT_ID       MQTT_CLIENT_NAME "-mery"
+#ifndef MQTT_CLIENT_SUFFIX
+#define MQTT_CLIENT_SUFFIX   "01"
+#endif
+#ifndef MQTT_CLIENT_ID
+#define MQTT_CLIENT_ID       MQTT_CLIENT_NAME "-" MQTT_CLIENT_SUFFIX
+#endif
 // On-demand request topic (not part of the RoM contract): any message triggers an immediate publish.
 #define MQTT_SUBSCRIBE_TOPIC MQTT_CLIENT_NAME "/incoming" 
 
@@ -67,7 +79,9 @@ typedef enum
 #define MQTT_STATUS_ONLINE   "online"
 #define MQTT_STATUS_OFFLINE  "offline"
 // device_id in every sensor message; the adapter tracks seq per device_id, so keep it unique per board.
+#ifndef MQTT_DEVICE_ID
 #define MQTT_DEVICE_ID       "az3166-01"
+#endif
 // Sensor message period in milliseconds.
 #define TELEMETRY_INTERVAL_MS 500
 
