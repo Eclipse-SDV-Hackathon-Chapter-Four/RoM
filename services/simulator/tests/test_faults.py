@@ -86,6 +86,16 @@ def test_replay_interruption_stalls_the_source():
     assert not fs.source_stalled()
 
 
+def test_heartbeat_loss_per_component():
+    fs, _ = state()
+    assert not fs.heartbeat_lost("chip")
+    f = fs.add("heartbeat_loss", params={"component": "chip"})
+    assert fs.heartbeat_lost("chip") and not fs.heartbeat_lost("simulator")
+    assert fs.apply(CELLS) == CELLS                      # it never touches the data
+    fs.remove(f.id)
+    assert not fs.heartbeat_lost("chip")
+
+
 def test_duration_expires_the_fault():
     fs, clock = state()
     f = fs.add("dropout", duration_s=3)
@@ -107,6 +117,8 @@ def test_remove_and_clear():
     ("spike", [1], {}), ("spike", [1], {"delta": "x"}), ("spike", [1], {"delta": 1, "samples": 0}),
     ("drift", [1], {}), ("out_of_range", [1], {"value": True}), ("stuck", [1], {}, 0), ("stuck", [1], {}, "5"),
     ("replay_interruption", [1]), ("stuck", [1], [1]),
+    ("heartbeat_loss", [], {}), ("heartbeat_loss", [], {"component": "databroker"}),
+    ("heartbeat_loss", [1], {"component": "chip"}),
 ])
 def test_invalid_requests_are_rejected(args):
     fs, _ = state()

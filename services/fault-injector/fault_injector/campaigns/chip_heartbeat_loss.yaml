@@ -1,0 +1,13 @@
+# Made with Claude (Claude Code, Anthropic)
+# The chip stops beating while its data keeps arriving (simulated chip; with the real board: unplug it).
+# Data that looks fine but comes from a chip that is not alive must not be trusted.
+run_id: chip-heartbeat-loss-01
+seed: 7
+hazard: "H8: sensor chip hung or powered off while data keeps flowing"
+safety_goal: "SG6: name a dead sensor chip within 3 s"
+expected_state: SENSOR_FAULT      # reason: "chip silent"
+expected_faults: [battery_guardian.chip_silent]
+max_detect_ms: 3000               # HEARTBEAT_STALE_MS = 1.5 s
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 8, target: simulator, type: heartbeat_loss, params: {component: chip}}

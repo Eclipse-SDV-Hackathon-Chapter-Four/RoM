@@ -44,9 +44,8 @@ guardian: mqtt-restart ## databroker + simulator + vss-uprotocol-client + guardi
 adapter: mqtt-restart ## MQTT -> KUKSA adapter in the foreground (starts databroker + mosquitto; stop the simulator first)
 	$(DC) --profile tools run --rm adapter
 
-hw:     mqtt-restart ## hardware run: AZ3166 -> mosquitto -> adapter -> databroker -> vss-uprotocol-client -> guardian + dfm + opensovd (no simulator)
-	$(DC) --profile tools stop simulator
-	$(DC) --profile tools up -d --build databroker mosquitto adapter vss-uprotocol-client guardian dfm opensovd
+hw:     mqtt-restart ## hardware run: AZ3166 = cell 1 -> mosquitto -> adapter -> databroker -> vss-uprotocol-client -> guardian + dfm + opensovd; simulator fills cells 2-4; guardian expects the chip + adapter heartbeats
+	SIM_CELLS=2,3,4 REQUIRED_HEARTBEATS=uprotocol,databroker,adapter,chip $(DC) --profile tools up -d --build databroker mosquitto adapter simulator vss-uprotocol-client guardian dfm opensovd
 	$(DC) --profile tools logs -f adapter guardian
 
 campaigns: ## list the bundled fault campaigns

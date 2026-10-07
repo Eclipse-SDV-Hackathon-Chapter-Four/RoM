@@ -10,6 +10,7 @@ Signal faults (per cell, cells = [] means all cells):
 Source faults:
     dropout             the listed cells are not written (all cells if none are listed); the wave keeps running
     replay_interruption the whole source goes silent; the wave is paused and resumes where it stopped
+    heartbeat_loss      params.component ("chip" or "simulator"): that heartbeat stops, the data keeps flowing
 
 Any fault may carry duration_s (> 0): it clears itself after that many seconds.
 """
@@ -21,7 +22,8 @@ from typing import Callable, Dict, List, Optional
 
 N_CELLS = 4
 SIGNAL_FAULTS = ("stuck", "spike", "drift", "out_of_range")
-SOURCE_FAULTS = ("dropout", "replay_interruption")
+SOURCE_FAULTS = ("dropout", "replay_interruption", "heartbeat_loss")
+HEARTBEAT_COMPONENTS = ("chip", "simulator")
 FAULT_TYPES = SIGNAL_FAULTS + SOURCE_FAULTS
 DEFAULT_OUT_OF_RANGE_C = 200.0
 
@@ -63,8 +65,8 @@ def _validate(type_: str, cells, params, duration_s):
         raise FaultError("cells must be a list of cell numbers")
     if any(not 1 <= c <= N_CELLS for c in cells):
         raise FaultError(f"cells must be between 1 and {N_CELLS}")
-    if type_ == "replay_interruption" and cells:
-        raise FaultError("replay_interruption stops the whole source, it takes no cells")
+    if type_ in ("replay_interruption", "heartbeat_loss") and cells:
+        raise FaultError(f"{type_} affects the whole source, it takes no cells")
     params = dict(params)
     if type_ == "spike":
         params["delta"] = _number(params, "delta")
@@ -77,6 +79,8 @@ def _validate(type_: str, cells, params, duration_s):
         params["value"] = _number(params, "value", DEFAULT_OUT_OF_RANGE_C)
     elif type_ == "stuck" and "value" in params:
         params["value"] = _number(params, "value")
+    elif type_ == "heartbeat_loss" and params.get("component") not in HEARTBEAT_COMPONENTS:
+        raise FaultError(f"params.component must be one of {', '.join(HEARTBEAT_COMPONENTS)}")
     if duration_s is not None:
         if isinstance(duration_s, bool) or not isinstance(duration_s, (int, float)) or duration_s <= 0:
             raise FaultError("duration_s must be a positive number")
@@ -124,6 +128,9 @@ class FaultState:
 
     def source_stalled(self) -> bool:
         return any(f.type == "replay_interruption" for f in self.active())
+
+    def heartbeat_lost(self, component: str) -> bool:
+        return any(f.type == "heartbeat_loss" and f.params["component"] == component for f in self.active())
 
     def apply(self, values: Dict[int, float]) -> Dict[int, Optional[float]]:
         """Cell values after all active faults; None = the cell is not reported this sample. Call once per sample."""

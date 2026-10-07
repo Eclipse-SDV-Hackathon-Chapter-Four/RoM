@@ -4,6 +4,7 @@
     up://<UP_AUTHORITY>/1001/1/8001   battery temperature Max   (VSS uProtocol Client)   build_/parse_signal_msg
     up://<UP_AUTHORITY>/1001/1/8002   battery cell temperatures (VSS uProtocol Client)   build_/parse_cells_msg
     up://<UP_AUTHORITY>/1002/1/8003   guardian fault events     (guardian -> DFM)         build_/parse_fault_event
+    up://<UP_AUTHORITY>/1001/1/8004   heartbeats                (VSS uProtocol Client)   build_/parse_heartbeat_msg
 
 Authority from env, see config.uprotocol(). All payloads are UPAYLOAD_FORMAT_JSON.
 """
@@ -11,10 +12,11 @@ import json
 from dataclasses import asdict, dataclass
 from typing import Dict, Mapping, Optional
 
-from rom_common.contracts import FAULT_CODES, N_CELLS, ContractError, _is_number
+from rom_common.contracts import FAULT_CODES, HB_DOWN, HB_OK, N_CELLS, ContractError, _is_number
 
 __all__ = ["ContractError", "SignalMsg", "build_signal_msg", "parse_signal_msg", "CellsMsg", "build_cells_msg",
-           "parse_cells_msg", "FaultEvent", "build_fault_event", "parse_fault_event", "FAULT_STAGES"]
+           "parse_cells_msg", "FaultEvent", "build_fault_event", "parse_fault_event", "FAULT_STAGES", "HeartbeatMsg",
+           "build_heartbeat_msg", "parse_heartbeat_msg"]
 
 UP_VSS_PUBLISHER_UE_ID = 0x1001          # uEntity "VSS uProtocol Client", instance 0
 UP_VSS_PUBLISHER_UE_VERSION = 1
@@ -23,6 +25,7 @@ UP_RESOURCE_BATTERY_CELLS = 0x8002       # topic: battery cell temperatures (the
 UP_GUARDIAN_UE_ID = 0x1002               # uEntity "Battery Thermal Guardian"
 UP_GUARDIAN_UE_VERSION = 1
 UP_RESOURCE_GUARDIAN_FAULT = 0x8003      # topic: guardian fault events (FAILED / PASSED edges for the DFM)
+UP_RESOURCE_HEARTBEAT = 0x8004           # topic: heartbeats of the client itself and of the databroker it probes
 UP_MONITOR_UE_ID = 0x10FF                # uEntity of the rom-up-monitor tool
 
 
@@ -181,3 +184,39 @@ def parse_fault_event(payload: "bytes | str") -> FaultEvent:
         seq=None if data.get("seq") is None else int(data["seq"]),
         msg_id=data.get("msg_id"), run_id=data.get("run_id"),
     )
+
+
+def build_heartbeat_msg(component: str, status: str, seq: int, ts_ms: int) -> bytes:
+    """uProtocol payload (UPAYLOAD_FORMAT_JSON) on UP_RESOURCE_HEARTBEAT. status: HB_OK or HB_DOWN.
+
+    A component that is down keeps beating with status "down" (the client does this for the databroker), so
+    "it says it is down" and "it says nothing" are different things.
+    """
+    return json.dumps({"component": component, "status": status, "seq": seq, "ts_ms": ts_ms},
+                      separators=(",", ":")).encode()
+
+
+@dataclass(frozen=True)
+class HeartbeatMsg:
+    component: str
+    status: str
+    seq: int
+    ts_ms: int
+
+
+def parse_heartbeat_msg(payload: "bytes | str") -> HeartbeatMsg:
+    """Parse + validate a uProtocol heartbeat payload. Raises ContractError."""
+    try:
+        data = json.loads(payload)
+    except (ValueError, TypeError) as e:
+        raise ContractError(f"invalid_json: {e}") from e
+    if not isinstance(data, dict):
+        raise ContractError("not_an_object")
+    component = data.get("component")
+    if not isinstance(component, str) or not component:
+        raise ContractError("component_missing")
+    if data.get("status") not in (HB_OK, HB_DOWN):
+        raise ContractError("invalid_status")
+    if not all(_is_number(data.get(k)) for k in ("seq", "ts_ms")):
+        raise ContractError("seq_or_ts_not_a_number")
+    return HeartbeatMsg(component=component, status=data["status"], seq=int(data["seq"]), ts_ms=int(data["ts_ms"]))

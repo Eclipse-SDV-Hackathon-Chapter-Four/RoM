@@ -273,6 +273,86 @@
             "reporter_side_reset": null,
             "manager_side_debounce": null,
             "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.uprotocol_lost"
+            },
+            "name": "BatteryUprotocolLinkLost",
+            "summary": "No uProtocol heartbeat from the vss-uprotocol-client for 1.5 s: client or Zenoh link dead, nothing downstream can be trusted",
+            "category": "Communication",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.databroker_down"
+            },
+            "name": "BatteryKuksaDatabrokerDown",
+            "summary": "The client reports the KUKSA Databroker unreachable (or its probe went silent)",
+            "category": "Communication",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.adapter_down"
+            },
+            "name": "BatteryAdapterDown",
+            "summary": "The MQTT to KUKSA adapter stopped beating: the board's data cannot reach the guardian",
+            "category": "Communication",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.simulator_down"
+            },
+            "name": "BatterySimulatorDown",
+            "summary": "The simulator stopped beating",
+            "category": "Communication",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.chip_silent"
+            },
+            "name": "BatteryChipSilent",
+            "summary": "The sensor chip stopped sending telemetry (adapter reports its heartbeat as 0)",
+            "category": "Communication",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
         }
     ]
 }

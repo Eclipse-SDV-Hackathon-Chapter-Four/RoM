@@ -50,3 +50,21 @@ def thresholds() -> Thresholds:
         imbalance_c=float(_env("IMBALANCE_C", "10")),
         imbalance_s=float(_env("IMBALANCE_S", "2")),
     )
+
+
+@dataclass(frozen=True)
+class HeartbeatConfig:
+    period_ms: int             # how often the client / producers beat
+    stale_ms: int              # no beat for this long = component lost (below the data STALE_MS: root cause first)
+    chip_timeout_ms: int       # adapter: no telemetry for this long = chip heartbeat goes to 0
+    required: tuple            # components the guardian expects from the start (others count once first seen)
+
+
+def heartbeat() -> HeartbeatConfig:
+    required = tuple(c.strip() for c in _env("REQUIRED_HEARTBEATS", "uprotocol,databroker").split(",") if c.strip())
+    return HeartbeatConfig(
+        period_ms=int(_env("HEARTBEAT_PERIOD_MS", "500")),
+        stale_ms=int(_env("HEARTBEAT_STALE_MS", "1500")),
+        chip_timeout_ms=int(_env("CHIP_TIMEOUT_MS", "1500")),
+        required=required,
+    )

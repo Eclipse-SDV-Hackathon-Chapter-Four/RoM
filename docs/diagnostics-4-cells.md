@@ -15,7 +15,7 @@
 ## Why
 
 The simulator now writes four cells (`Vehicle.Powertrain.TractionBattery.Cells.Cell1..4.Temperature`,
-overlay [`infra/vss/rom_cells.json`](../infra/vss/rom_cells.json)) plus `Temperature.Max`. Everything after
+overlay [`infra/vss/rom_overlay.json`](../infra/vss/rom_overlay.json)) plus `Temperature.Max`. Everything after
 KUKSA still sees only `Max`:
 
 | Component | Today | Consequence |
@@ -61,7 +61,7 @@ disarms the thermal warning for the healthy cells.
 ### C3. DFM catalog — `services/dfm/catalog/battery_guardian.json`
 
 fault-lib catalog format (see `fault-lib/src/fault_lib/tests/data/hvac_fault_catalog.json`), `"id": "battery_guardian"`,
-`Text` ids. 17 codes:
+`Text` ids. 17 codes, plus 5 heartbeat root causes (`uprotocol_lost`, `databroker_down`, `adapter_down`, `simulator_down`, `chip_silent`, see [issue #8](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/8) and `services/guardian/README.md`; only the one closest to the guardian is raised):
 
 | Code | Severity | Raised when |
 |---|---|---|

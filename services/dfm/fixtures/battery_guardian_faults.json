@@ -1,5 +1,23 @@
 [
   {
+    "code": "battery_guardian.adapter_down",
+    "env": {},
+    "fault_name": "BatteryAdapterDown",
+    "occurrence_counter": 0,
+    "severity": 4,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0x00",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "0",
+      "testFailedThisOperationCycle": "0",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "0"
+    }
+  },
+  {
     "code": "battery_guardian.cell1.out_of_range",
     "env": {
       "cell": "1",
@@ -282,6 +300,42 @@
     }
   },
   {
+    "code": "battery_guardian.chip_silent",
+    "env": {},
+    "fault_name": "BatteryChipSilent",
+    "occurrence_counter": 0,
+    "severity": 4,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0x00",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "0",
+      "testFailedThisOperationCycle": "0",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "0"
+    }
+  },
+  {
+    "code": "battery_guardian.databroker_down",
+    "env": {},
+    "fault_name": "BatteryKuksaDatabrokerDown",
+    "occurrence_counter": 0,
+    "severity": 4,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0x00",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "0",
+      "testFailedThisOperationCycle": "0",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "0"
+    }
+  },
+  {
     "code": "battery_guardian.mitigation_failed",
     "env": {
       "cell": "1",
@@ -374,6 +428,42 @@
       "testNotCompletedSinceLastClear": "0",
       "testNotCompletedThisOperationCycle": "0",
       "warningIndicatorRequested": "1"
+    }
+  },
+  {
+    "code": "battery_guardian.simulator_down",
+    "env": {},
+    "fault_name": "BatterySimulatorDown",
+    "occurrence_counter": 0,
+    "severity": 4,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0x00",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "0",
+      "testFailedThisOperationCycle": "0",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "0"
+    }
+  },
+  {
+    "code": "battery_guardian.uprotocol_lost",
+    "env": {},
+    "fault_name": "BatteryUprotocolLinkLost",
+    "occurrence_counter": 0,
+    "severity": 4,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0x00",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "0",
+      "testFailedThisOperationCycle": "0",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "0"
     }
   }
 ]

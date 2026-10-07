@@ -17,8 +17,8 @@ services:
 
   databroker:
     image: ghcr.io/eclipse-kuksa/kuksa-databroker:${KUKSA_VERSION:-latest}
-    # default VSS (inside the image) + the RoM overlay with the 4 battery cells (infra/vss/rom_cells.json)
-    command: --insecure --vss vss_release_6.0.json,/vss/rom_cells.json
+    # default VSS (inside the image) + the RoM overlay with the 4 battery cells (infra/vss/rom_overlay.json)
+    command: --insecure --vss vss_release_6.0.json,/vss/rom_overlay.json
     volumes: ["./vss:/vss:ro,z"]
     ports: ["55555:55555"]
 
@@ -47,6 +47,7 @@ services:
       KUKSA_HOST: databroker
       SIM_HZ: ${SIM_HZ:-2}
       SIM_PERIOD_S: ${SIM_PERIOD_S:-120}
+      SIM_CELLS: ${SIM_CELLS:-1,2,3,4}  # `make hw`: 2,3,4, the real board is cell 1 (adapter)
       SIM_API_HOST: 0.0.0.0            # fault API for the fault-injector (and curl); no authentication
       SIM_API_PORT: 8080
     ports: ["127.0.0.1:8080:8080"]     # loopback only: keep the unauthenticated fault API off the network
@@ -86,6 +87,7 @@ services:
     restart: on-failure
     environment:
       ZENOH_CONNECT: tcp/vss-uprotocol-client:7447
+      REQUIRED_HEARTBEATS: ${REQUIRED_HEARTBEATS:-uprotocol,databroker}   # `make hw` adds adapter,chip
       ZENOH_LISTEN: tcp/0.0.0.0:7447   # the DFM reporter (and rom-up-monitor --faults) connects here for fault events
       MQTT_HOST: mosquitto             # display command (rom/actuator/display/cmd) goes out over MQTT
     depends_on: [vss-uprotocol-client, mosquitto, dfm]   # dfm first: fault events are not buffered
