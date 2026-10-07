@@ -1,6 +1,7 @@
 # Made with Claude (Claude Code, Anthropic)
 import io
 import json
+import os
 from types import SimpleNamespace
 
 from uprotocol.v1.ucode_pb2 import UCode
@@ -12,7 +13,8 @@ from rom_common.jsonlog import JsonLogger
 from rom_uprotocol import contract, uris
 from rom_uprotocol.publisher import SignalPublisher
 from guardian import guardian as gmod
-from guardian.guardian import MITIGATING, SCENARIO, Guardian, display_cmd, fault_edges, report_faults
+from guardian.guardian import (MITIGATING, SCENARIO, Guardian, display_cmd, fault_edges, report_faults,
+                               scenario_fault_events)
 
 
 def test_scenario_transitions():
@@ -130,6 +132,11 @@ def test_report_faults_logs_and_publishes_events_the_dfm_can_parse():
     assert sent[0].attributes.source == uris.guardian_fault_topic("v")
     logged = json.loads(buf.getvalue())
     assert logged["event"] == "fault_event" and logged["code"] == event.code
+
+
+def test_dfm_fixture_matches_scenario():
+    fixture = os.path.join(os.path.dirname(__file__), "../../dfm/fixtures/guardian_events.jsonl")
+    assert open(fixture).read().splitlines() == scenario_fault_events()  # regenerate: make dfm-fixtures
 
 
 # --- heartbeats ------------------------------------------------------------------------------------------------

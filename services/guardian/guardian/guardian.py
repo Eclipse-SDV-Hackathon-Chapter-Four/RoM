@@ -19,6 +19,7 @@ KUKSA Databroker directly (challenge architecture rule): KUKSA -> vss-uprotocol-
 
 Run:
   rom-guardian              test scenario, offline, instant   (or: python -m guardian.guardian)
+  rom-guardian --fault-events  test scenario as fault events (services/dfm/fixtures/guardian_events.jsonl)
   rom-guardian --uprotocol  live: cells from up://<UP_AUTHORITY>/1001/1/8002, heartbeats from .../8004,
                             faults to .../1002/1/8003
   make guardian             databroker + simulator + vss-uprotocol-client + guardian in compose
@@ -30,6 +31,7 @@ import sys
 import threading
 import time
 from dataclasses import asdict
+from types import SimpleNamespace
 
 from typing import Dict, List, Mapping, Optional, Tuple, Union
 
@@ -287,19 +289,40 @@ def run_uprotocol():
         log.log("stopped")
 
 
-def report_faults(g: Guardian, before: Mapping[str, Optional[int]], last, log, publisher=None, trigger=None) -> None:
-    """Log every fault edge as fault_event and, live, publish it for the DFM.
+def fault_events(g: Guardian, before: Mapping[str, Optional[int]], last, ts_ms: int, trigger=None):
+    """FaultEvent for every fault edge since `before`.
 
     seq / msg_id come from `trigger` (what arrived last: a cell message or a heartbeat), run_id from the last cell message."""
-    from rom_uprotocol.contract import FaultEvent, build_fault_event
+    from rom_uprotocol.contract import FaultEvent
 
-    for code, stage, cell in fault_edges(before, g.faults):
-        event = FaultEvent(code=code, stage=stage, ts_ms=clock.now_ms(), cell=cell,
-                           temp_c=None if g.temp is None else round(g.temp, 2), cells=g.cells_text(),
-                           reason=fault_reason(code) if stage == "FAILED" else "cleared",
-                           seq=(trigger or last).seq if (trigger or last) else None,
-                           msg_id=(trigger or last).msg_id if (trigger or last) else None,
-                           run_id=last.run_id if last else None)
+    src = trigger or last
+    return [FaultEvent(code=code, stage=stage, ts_ms=ts_ms, cell=cell,
+                       temp_c=None if g.temp is None else round(g.temp, 2), cells=g.cells_text(),
+                       reason=fault_reason(code) if stage == "FAILED" else "cleared",
+                       seq=src.seq if src else None, msg_id=src.msg_id if src else None,
+                       run_id=last.run_id if last else None)
+            for code, stage, cell in fault_edges(before, g.faults)]
+
+
+def scenario_fault_events() -> List[str]:
+    """SCENARIO as fault event JSON lines (ts_ms = scenario second * 1000): services/dfm/fixtures input."""
+    from rom_uprotocol.contract import build_fault_event
+
+    g, lines = Guardian(), []
+    for t, temp in enumerate(SCENARIO):
+        before = g.faults
+        g.update(t, temp)
+        last = SimpleNamespace(seq=t, msg_id=None, run_id=None)
+        lines += [build_fault_event(e).decode() for e in fault_events(g, before, last, t * 1000)]
+    return lines
+
+
+def report_faults(g: Guardian, before: Mapping[str, Optional[int]], last, log, publisher=None, trigger=None) -> None:
+    """Log every fault edge as fault_event and, live, publish it for the DFM."""
+    from rom_uprotocol.contract import build_fault_event
+
+    for event in fault_events(g, before, last, clock.now_ms(), trigger):
+        code, stage = event.code, event.stage
         log.log("fault_event", **asdict(event))
         if publisher is not None:
             publisher.publish_json(lambda seq, ts, e=event: build_fault_event(e), code=code, stage=stage)
@@ -360,6 +383,8 @@ def main():
     try:
         if "--uprotocol" in sys.argv:
             run_uprotocol()
+        elif "--fault-events" in sys.argv:
+            print("\n".join(scenario_fault_events()))
         else:
             g = Guardian()
             print(f"{'time':>6}  {'temp':>6}  state")

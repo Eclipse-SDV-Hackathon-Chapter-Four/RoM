@@ -7,7 +7,7 @@
                 "Text": "battery_guardian.over_temp_warning"
             },
             "name": "BatteryOverTempWarning",
-            "summary": "Hottest valid cell at or above WARN_C (38 °C): occupants warned",
+            "summary": "Hottest valid cell at or above WARN_C (38 degC): occupants warned",
             "category": "Hardware",
             "severity": "Warn",
             "compliance": [
@@ -23,7 +23,7 @@
                 "Text": "battery_guardian.over_temp_critical"
             },
             "name": "BatteryOverTempCritical",
-            "summary": "Hottest valid cell at or above CRIT_C (45 °C): cooling requested",
+            "summary": "Hottest valid cell at or above CRIT_C (45 degC): cooling requested",
             "category": "Hardware",
             "severity": "Error",
             "compliance": [
@@ -71,7 +71,7 @@
                 "Text": "battery_guardian.cell_imbalance"
             },
             "name": "BatteryCellImbalance",
-            "summary": "Hottest minus coldest valid cell above IMBALANCE_C (10 °C) for IMBALANCE_S (2 s)",
+            "summary": "Hottest minus coldest valid cell above IMBALANCE_C (10 degC) for IMBALANCE_S (2 s)",
             "category": "Hardware",
             "severity": "Error",
             "compliance": [
@@ -119,7 +119,7 @@
                 "Text": "battery_guardian.cell1.out_of_range"
             },
             "name": "BatteryCell1TempOutOfRange",
-            "summary": "Cell 1 temperature outside the plausible range (-40..150 °C)",
+            "summary": "Cell 1 temperature outside the plausible range (-40..150 degC)",
             "category": "Hardware",
             "severity": "Error",
             "compliance": [
@@ -167,7 +167,7 @@
                 "Text": "battery_guardian.cell2.out_of_range"
             },
             "name": "BatteryCell2TempOutOfRange",
-            "summary": "Cell 2 temperature outside the plausible range (-40..150 °C)",
+            "summary": "Cell 2 temperature outside the plausible range (-40..150 degC)",
             "category": "Hardware",
             "severity": "Error",
             "compliance": [
@@ -215,7 +215,7 @@
                 "Text": "battery_guardian.cell3.out_of_range"
             },
             "name": "BatteryCell3TempOutOfRange",
-            "summary": "Cell 3 temperature outside the plausible range (-40..150 °C)",
+            "summary": "Cell 3 temperature outside the plausible range (-40..150 degC)",
             "category": "Hardware",
             "severity": "Error",
             "compliance": [
@@ -263,7 +263,7 @@
                 "Text": "battery_guardian.cell4.out_of_range"
             },
             "name": "BatteryCell4TempOutOfRange",
-            "summary": "Cell 4 temperature outside the plausible range (-40..150 °C)",
+            "summary": "Cell 4 temperature outside the plausible range (-40..150 degC)",
             "category": "Hardware",
             "severity": "Error",
             "compliance": [

@@ -13,7 +13,7 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     command: mosquitto -c /mosquitto-no-auth.conf   # anonymous access, port 1883 on all interfaces
-    ports: ["1883:1883"]
+    ports: ["${MQTT_HOST_PORT:-1883}:1883"]   # AZ3166 board publishes here; `make` stops if 1883 is taken
 
   databroker:
     image: ghcr.io/eclipse-kuksa/kuksa-databroker:${KUKSA_VERSION:-latest}
@@ -90,7 +90,17 @@ services:
       REQUIRED_HEARTBEATS: ${REQUIRED_HEARTBEATS:-uprotocol,databroker}   # `make hw` adds adapter,chip
       ZENOH_LISTEN: tcp/0.0.0.0:7447   # the DFM reporter (and rom-up-monitor --faults) connects here for fault events
       MQTT_HOST: mosquitto             # display command (rom/actuator/display/cmd) goes out over MQTT
-    depends_on: [vss-uprotocol-client, mosquitto]
+    depends_on: [vss-uprotocol-client, mosquitto, dfm]   # dfm first: fault events are not buffered
+
+  dfm:
+    profiles: ["tools"]          # fault-lib DFM + bridge: guardian fault events (uProtocol) -> fault records (dfm/query)
+    build: {context: .., dockerfile: services/dfm/Dockerfile}
+    image: localhost/rom/dfm:dev
+    restart: on-failure
+    # iceoryx2 shm + files shared with opensovd; fault records survive restarts
+    volumes: [iceoryx2-shm:/dev/shm, iceoryx2:/tmp/iceoryx2, dfm-storage:/var/lib/rom-dfm]
+    environment:
+      ZENOH_CONNECT: tcp/guardian:7447   # guardian publishes up://rom-vehicle/1002/1/8003 and listens on 7447
 
   opensovd:
     profiles: ["tools"]          # SOVD REST: http://localhost:7690/sovd/v1/apps/battery_guardian/faults (DFM via iceoryx2)
@@ -112,12 +122,6 @@ services:
       PUBLISHER_URL: http://vss-uprotocol-client:8081
 
   # --- TODO placeholders: images build and start, log "not_implemented" and exit ---
-  dfm:
-    profiles: ["tools", "todo"]  # in "tools" too: opensovd (tools) depends on it
-    build: {context: .., dockerfile: services/dfm/Dockerfile}
-    image: localhost/rom/dfm:dev
-    volumes: *iceoryx2                 # iceoryx2 shared memory + service files, shared with opensovd
-
   evidence-collector:
     profiles: ["todo"]
     build: {context: .., dockerfile: services/evidence-collector/Dockerfile}
@@ -136,6 +140,7 @@ services:
 
 volumes:
   kuksa-history:
+  dfm-storage:
   # iceoryx2 between dfm and opensovd: /dev/shm (shared memory) and /tmp/iceoryx2 (service/node files)
   # must live and die together, so both are tmpfs volumes mounted into both containers. A shared IPC
   # namespace (ipc: service:dfm) plus a persistent volume breaks on a DFM restart: the restart gets a

@@ -1,7 +1,10 @@
 <!-- Made with Claude (Claude Code, Anthropic) -->
 # RoM — Battery Thermal Guardian
 
-Sensor / simulator → KUKSA Databroker → VSS uProtocol Client → (uProtocol over Zenoh) → Guardian → display.
+[![CI](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/actions/workflows/ci.yml/badge.svg)](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/actions/workflows/ci.yml)
+
+Sensor / simulator → KUKSA Databroker → VSS uProtocol Client → (uProtocol over Zenoh) → Guardian → display,
+and Guardian → (uProtocol) → DFM fault records (Eclipse OpenSOVD fault-lib).
 The guardian never reads the databroker directly. Everything runs in Docker; you only need `docker compose` and `make`.
 
 ## Repository layout
@@ -14,11 +17,11 @@ Every component is its own pip package; services that run under Ankaios have the
 | `libs/rom-common` | `rom_common` | – | contracts, config, JSON logging, KUKSA / MQTT helpers |
 | `libs/rom-uprotocol` | `rom_uprotocol` | – | uProtocol library: Zenoh transport, URIs, publisher, subscriber |
 | `services/vss-uprotocol-client` | `vss_uprotocol_client` | ✅ | KUKSA Databroker → uProtocol |
-| `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (uProtocol input; display command out over MQTT) |
+| `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (4 cells over uProtocol in, DFM fault events out over uProtocol; display command over MQTT) |
 | `services/simulator` | `simulator` | dev image | 4-cell sine-wave temperature into KUKSA, with HTTP fault injection |
 | `services/adapter` | `adapter` | dev image (`make hw`) | MQTT → KUKSA |
 | `services/fault-injector` | `fault_injector` | ✅ | Fault Campaign Runner: YAML campaigns → simulator / publisher fault APIs |
-| `services/dfm` | `dfm` | ✅ TODO | Diagnostic Fault Manager |
+| `services/dfm` | `rom_dfm` (Rust) | ✅ | Diagnostic Fault Manager: fault-lib `dfm_bin` + guardian fault events (uProtocol) → fault records |
 | `services/opensovd` | `rom-opensovd` (Rust) | ✅ | Eclipse OpenSOVD server: SOVD entities + DFM faults (`/sovd/v1/apps/battery_guardian/faults`) |
 | `services/evidence-collector` | `evidence_collector` | ✅ TODO | Evidence Collector → verdicts |
 | `MXChip/AZ3166` | – (C firmware) | – | AZ3166 board on Eclipse ThreadX: sensor telemetry over MQTT, guardian state on its OLED |
@@ -26,12 +29,18 @@ Every component is its own pip package; services that run under Ankaios have the
 ## Quick start
 
 ```bash
-make guardian                    # databroker + simulator + vss-uprotocol-client + guardian, shows guardian logs
+make guardian                    # databroker + simulator + vss-uprotocol-client + guardian + dfm + opensovd, shows guardian logs
 SIM_PERIOD_S=30 make guardian    # faster wave (30 s instead of 120 s)
 make down                        # stop everything
 ```
 
 `Ctrl+C` only stops following the logs; the stack keeps running until `make down`.
+
+The compose mosquitto needs host port 1883 (the AZ3166 board publishes there). If a host broker already holds it,
+`make` stops with a hint: `sudo systemctl stop mosquitto`, or `MQTT_HOST_PORT=1884 make guardian` (simulator only).
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every PR: `make test`, the DFM build with
+`cargo test` and a fixture check against a real `dfm_bin`, all service images, and the AZ3166 ThreadX firmware.
 
 ## All commands
 
@@ -40,7 +49,9 @@ make down                        # stop everything
 | `make help` | list all commands |
 | `make mqtt-restart` | recreate mosquitto (fresh broker, host port 1883 re-published). `up`, `guardian`, `adapter` and `hw` do this first, so the broker is always reachable from the board and your laptop; it fails loudly if something else holds port 1883 |
 | `make up` | start databroker + mosquitto in the background |
-| `make guardian` | databroker + simulator + vss-uprotocol-client + guardian, follow guardian logs |
+| `make guardian` | databroker + simulator + vss-uprotocol-client + guardian + dfm + opensovd, follow guardian logs |
+| `make dfm-faults` | fault records in the running DFM as JSON |
+| `make dfm-fixtures` | regenerate the DFM test fixtures for OpenSOVD (`services/dfm/fixtures`) |
 | `make images` | build all service images `localhost/rom/<service>:dev` |
 | `make hw` | hardware run: AZ3166 (= cell 1) → mosquitto → adapter → databroker → vss-uprotocol-client → guardian; the simulator fills cells 2-4 (`SIM_CELLS=2,3,4`); the guardian also expects the `adapter` and `chip` heartbeats. Follows adapter + guardian logs |
 | `make adapter` | MQTT → KUKSA adapter in the foreground |
@@ -75,6 +86,7 @@ pytest -q
 |---|---|---|
 | `KUKSA_HOST` / `KUKSA_PORT` | `127.0.0.1` / `55555` | all |
 | `MQTT_HOST` / `MQTT_PORT` | `localhost` / `1883` | all |
+| `MQTT_HOST_PORT` | `1883` | compose mosquitto host port (`make`) |
 | `SIM_HZ`, `SIM_PERIOD_S`, `SIM_MIN_C`, `SIM_MAX_C`, `SIM_SEED` | `2`, `120`, `30`, `69`, `0` | simulator |
 | `SIM_API_HOST` / `SIM_API_PORT` | `127.0.0.1` / `8080` | simulator fault API (`0` = off) |
 | `FAULT_API_HOST` / `FAULT_API_PORT` | `127.0.0.1` / unset (off) | vss-uprotocol-client transport-fault API |
@@ -317,14 +329,15 @@ flowchart LR
 - [ ] Campaigns for duplicate / reorder once the guardian detects them (Guardian section)
 
 #### 3. Guardian
+- [x] Publish fault events over uProtocol (`up://rom-vehicle/1002/1/8003` → DFM, Python ↔ Rust `up-transport-zenoh`)
 - [x] Heartbeats from the uProtocol link, the KUKSA databroker, the adapter / simulator and the physical chip; the guardian names the failing component (DFM code for the root cause)
-- [ ] Publish state, heartbeat, fault and mitigation events over uProtocol (the guardian's own outgoing heartbeat)
+- [ ] Publish state, heartbeat and mitigation events over uProtocol (the guardian's own outgoing heartbeat)
 - [ ] Firmware heartbeat from the AZ3166 itself (independent of the sensor read; needs a re-flash)
 - [ ] Detect duplicate / reordered messages and implausible rate of change
 - [ ] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event
 
 #### 4. Diagnostics
-- [ ] DFM fault records for every faulted scenario
+- [x] DFM fault records for every faulted scenario (fault-lib `dfm_bin`, catalog `battery_guardian`, see `services/dfm`)
 - [ ] Expose diagnostics through Eclipse OpenSOVD
 - [ ] Diagnostic faults: delayed DFM write · partial OpenSOVD visibility
 
@@ -341,7 +354,8 @@ flowchart LR
 
 #### 7. Blueprint & community
 - [ ] Reusable package another team can run with one command
-- [ ] CI pipeline running tests and campaigns on every PR
+- [x] CI pipeline on every PR: tests, DFM fixture check, service images, ThreadX firmware
+- [ ] CI runs the fault campaigns
 - [ ] Upstream contribution: update `up-transport-zenoh-python` to zenoh 1.x and the current up-spec
 - [ ] SDV Blueprint proposal
 

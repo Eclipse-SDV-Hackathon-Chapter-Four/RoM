@@ -20,3 +20,9 @@ def test_catalog_entries_use_fault_lib_values():
         assert fault["severity"] in ("Warn", "Error", "Fatal")
         assert fault["category"] in ("Hardware", "Communication")
         assert len(fault["id"]["Text"]) <= 64 and len(fault["name"]) <= 64   # fault-lib ShortString
+        assert len(fault["summary"]) <= 128                                  # fault-lib LongString
+
+
+def test_catalog_is_ascii():
+    # dfm_bin rejects the whole catalog on any non-ASCII byte (iceoryx2 StaticString), e.g. "°C"
+    assert CATALOG.read_bytes().isascii()

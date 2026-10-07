@@ -1,15 +1,14 @@
 <!-- Made with Claude (Claude Code, Anthropic) -->
-# dfm — Diagnostic Fault Manager (handover: 4-cell contract is ready, Rust reporter is TODO)
+# dfm — Diagnostic Fault Manager
 
 ```
 guardian --uProtocol up://rom-vehicle/1002/1/8003 (FaultEvent JSON)--> rom-dfm report --fault-lib Reporter--> dfm_bin
         --iceoryx2 dfm/query--> rom-opensovd (services/opensovd) --HTTP--> /sovd/v1/apps/battery_guardian/faults
 ```
 
-Everything up to the fault topic is done and verified live (see "Verified" below). What is left for this service:
-receive the events and write them into the DFM with fault-lib.
-
-The Python package here (`rom-dfm`, `dfm/__main__.py`) is still the placeholder; replace it with the Rust reporter.
+Eclipse OpenSOVD [`fault-lib`](https://github.com/eclipse-opensovd/fault-lib) DFM (`dfm_bin`) plus `rom-dfm report`
+(Rust, [`src/main.rs`](src/main.rs)): every guardian `FAILED` / `PASSED` edge becomes a fault-lib record
+(ISO 14229 lifecycle), served on iceoryx2 `dfm/query` to `services/opensovd`.
 
 ## 1. Catalog — [`catalog/battery_guardian.json`](catalog/battery_guardian.json)
 
@@ -66,18 +65,48 @@ Put these keys into the record's environment data (all strings, skip null / empt
 `FaultEvent.environment_data()` builds them: `cell`, `temp_c`, `cells`, `reason`, `seq`, `msg_id`, `ts_ms`, `run_id`.
 OpenSOVD passes them through and turns the numeric ones back into JSON numbers.
 
-## 3. What to build (Rust)
+## 3. Reporter (`rom-dfm`)
 
-1. **Spike first (≤ 1 h):** a Rust `up-transport-zenoh` subscriber on the key above receives one event from the
-   running stack. If keys or attachments do not match, fix `libs/rom-uprotocol/rom_uprotocol/transport/zenoh.py`
-   (its tests already check the key against every up-spec example).
-2. `rom-dfm report`: catalog → one `Reporter` per code; for every event
-   `reporter.publish("battery_guardian", reporter.create_record(Failed|Passed))` with the environment data above.
-3. Image: `dfm_bin --catalog-dir /catalog` + the reporter in one container (iceoryx2 between them),
-   same `fault-lib` rev as `services/opensovd` (`12dac50`), iceoryx2 volumes as in `infra/docker-compose.yml`.
-4. Log every write (`code`, `stage`, `run_id`, write time) as a JSON line: the evidence collector needs the DFM write latency.
+- catalog → one fault-lib `Reporter` per `Text` code; every event →
+  `reporter.publish("battery_guardian", reporter.create_record(Failed|Passed))` with the environment data above
+  (8 keys = fault-lib `MetadataVec` capacity; values over 64 bytes are dropped and logged as `env_dropped`).
+- One container (iceoryx2 between them): `dfm_bin --catalog-dir /etc/rom/catalog --storage-dir /var/lib/rom-dfm`
+  + `rom-dfm report`, both built inside the fault-lib workspace at `12dac50` (same rev as `services/opensovd`).
+  If either exits, the container exits (compose restarts it). Records survive restarts (`dfm-storage` volume).
+- iceoryx2: tmpfs volumes `iceoryx2-shm` (`/dev/shm`) and `iceoryx2` (`/tmp/iceoryx2`) shared with `opensovd`;
+  runs as root like `opensovd` (iceoryx2 files are owner-only).
+- Every write is a JSON line:
+  `{"event":"fault_record","code":…,"stage":"FAILED","run_id":…,"latency_ms":…,"ts_ms":<write time>,"env":{…}}`
+  (`latency_ms` = write time − the guardian's `ts_ms`; on failure `publish_failed`, bad payloads `rejected`).
 
-Contract notes for OpenSOVD (iceoryx2, restarts, same user) are in [`../opensovd/README.md`](../opensovd/README.md#contract-with-servicesdfm).
+| Command (inside the container) | What |
+|---|---|
+| `rom-dfm report` | uProtocol `up://<UP_AUTHORITY>/1002/1/8003` → DFM (default) |
+| `rom-dfm replay <events.jsonl>` | same events from a file, e.g. `/etc/rom/fixtures/guardian_events.jsonl` |
+| `rom-dfm query [--stable]` | all records of `battery_guardian` as JSON (`--stable`: no timestamps) |
+
+| Env | Default |
+|---|---|
+| `UP_AUTHORITY` | `rom-vehicle` |
+| `ZENOH_MODE` / `ZENOH_CONNECT` / `ZENOH_LISTEN` | `peer` / – / – (compose: `ZENOH_CONNECT=tcp/guardian:7447`) |
+| `CATALOG` | `/etc/rom/catalog/battery_guardian.json` |
+| `DFM_PATH` (query) | `battery_guardian` |
+
+```bash
+make guardian       # whole stack incl. dfm + opensovd
+make campaign C=sensor_stuck_cell3
+make dfm-faults     # records straight from the DFM (JSON)
+make sovd-faults    # the same over SOVD
+```
+
+Fixtures: [`fixtures/guardian_events.jsonl`](fixtures/guardian_events.jsonl) is the guardian test scenario
+(`rom-guardian --fault-events`), [`fixtures/battery_guardian_faults.json`](fixtures/battery_guardian_faults.json)
+is that replayed into a real `dfm_bin` (`rom-dfm query --stable`). Regenerate with `make dfm-fixtures`; CI and a
+guardian test fail if they drift.
+
+Known limits: fault events are not buffered (the guardian starts after the dfm; dfm's Zenoh retries until the
+guardian listens); the reporter waits 50 ms after each record because the DFM's iceoryx2 subscriber buffer is
+small and a burst would lose records.
 
 ## 4. See the events without the DFM
 

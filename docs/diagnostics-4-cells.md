@@ -8,7 +8,7 @@
 | Contracts C1, C2, C3 | ✅ done: `rom_uprotocol.contract`, `rom_common.contracts.FAULT_CODES`, `services/dfm/catalog/battery_guardian.json` |
 | WP1 rom_uprotocol + vss-uprotocol-client | ✅ done, plus `coalesce()`: the databroker notifies each path separately |
 | WP2 guardian | ✅ done, verified live with 5 campaigns |
-| WP3 DFM reporter (Rust) | ⏳ open: handover in [`services/dfm/README.md`](../services/dfm/README.md) |
+| WP3 DFM reporter (Rust) | ✅ done: `rom-dfm report` + `dfm_bin`, see [`services/dfm/README.md`](../services/dfm/README.md) |
 | WP4 OpenSOVD | ✅ fixtures and docs (no logic change needed); `data/` resource still open |
 | WP5 campaigns | ✅ `expected_faults` on every campaign, 2 new single-cell campaigns |
 

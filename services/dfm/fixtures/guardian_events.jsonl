@@ -1,0 +1,27 @@
+{"code":"battery_guardian.over_temp_warning","stage":"FAILED","ts_ms":8000,"cell":1,"temp_c":40.0,"cells":"40,40,40,40","reason":"getting hot","seq":8,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.over_temp_critical","stage":"FAILED","ts_ms":10000,"cell":1,"temp_c":46.0,"cells":"46,46,46,46","reason":"too hot","seq":10,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.over_temp_critical","stage":"PASSED","ts_ms":12000,"cell":1,"temp_c":44.0,"cells":"44,44,44,44","reason":"cleared","seq":12,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.over_temp_warning","stage":"PASSED","ts_ms":14000,"cell":1,"temp_c":36.0,"cells":"36,36,36,36","reason":"cleared","seq":14,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.signal_stale","stage":"FAILED","ts_ms":18000,"cell":null,"temp_c":30.0,"cells":"30,30,30,30","reason":"stale signal","seq":18,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.signal_stale","stage":"PASSED","ts_ms":20000,"cell":null,"temp_c":30.0,"cells":"30,30,30,30","reason":"cleared","seq":20,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell1.out_of_range","stage":"FAILED","ts_ms":22000,"cell":1,"temp_c":30.1,"cells":"200,200,200,200","reason":"out of range","seq":22,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell2.out_of_range","stage":"FAILED","ts_ms":22000,"cell":2,"temp_c":30.1,"cells":"200,200,200,200","reason":"out of range","seq":22,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell3.out_of_range","stage":"FAILED","ts_ms":22000,"cell":3,"temp_c":30.1,"cells":"200,200,200,200","reason":"out of range","seq":22,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell4.out_of_range","stage":"FAILED","ts_ms":22000,"cell":4,"temp_c":30.1,"cells":"200,200,200,200","reason":"out of range","seq":22,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell1.out_of_range","stage":"PASSED","ts_ms":23000,"cell":1,"temp_c":30.0,"cells":"30,30,30,30","reason":"cleared","seq":23,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell2.out_of_range","stage":"PASSED","ts_ms":23000,"cell":2,"temp_c":30.0,"cells":"30,30,30,30","reason":"cleared","seq":23,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell3.out_of_range","stage":"PASSED","ts_ms":23000,"cell":3,"temp_c":30.0,"cells":"30,30,30,30","reason":"cleared","seq":23,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell4.out_of_range","stage":"PASSED","ts_ms":23000,"cell":4,"temp_c":30.0,"cells":"30,30,30,30","reason":"cleared","seq":23,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.over_temp_warning","stage":"FAILED","ts_ms":25000,"cell":1,"temp_c":42.0,"cells":"42,42,42,42","reason":"getting hot","seq":25,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell1.signal_stuck","stage":"FAILED","ts_ms":36000,"cell":1,"temp_c":42.0,"cells":"42,42,42,42","reason":"stuck signal","seq":36,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell2.signal_stuck","stage":"FAILED","ts_ms":36000,"cell":2,"temp_c":42.0,"cells":"42,42,42,42","reason":"stuck signal","seq":36,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell3.signal_stuck","stage":"FAILED","ts_ms":36000,"cell":3,"temp_c":42.0,"cells":"42,42,42,42","reason":"stuck signal","seq":36,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell4.signal_stuck","stage":"FAILED","ts_ms":36000,"cell":4,"temp_c":42.0,"cells":"42,42,42,42","reason":"stuck signal","seq":36,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell1.signal_stuck","stage":"PASSED","ts_ms":37000,"cell":1,"temp_c":30.0,"cells":"30,30,30,30","reason":"cleared","seq":37,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell2.signal_stuck","stage":"PASSED","ts_ms":37000,"cell":2,"temp_c":30.0,"cells":"30,30,30,30","reason":"cleared","seq":37,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell3.signal_stuck","stage":"PASSED","ts_ms":37000,"cell":3,"temp_c":30.0,"cells":"30,30,30,30","reason":"cleared","seq":37,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.cell4.signal_stuck","stage":"PASSED","ts_ms":37000,"cell":4,"temp_c":30.0,"cells":"30,30,30,30","reason":"cleared","seq":37,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.over_temp_warning","stage":"PASSED","ts_ms":37000,"cell":1,"temp_c":30.0,"cells":"30,30,30,30","reason":"cleared","seq":37,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.over_temp_critical","stage":"FAILED","ts_ms":39000,"cell":1,"temp_c":46.0,"cells":"46,46,46,46","reason":"too hot","seq":39,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.over_temp_warning","stage":"FAILED","ts_ms":39000,"cell":1,"temp_c":46.0,"cells":"46,46,46,46","reason":"getting hot","seq":39,"msg_id":null,"run_id":null}
+{"code":"battery_guardian.mitigation_failed","stage":"FAILED","ts_ms":46000,"cell":1,"temp_c":50.1,"cells":"50.1,50.1,50.1,50.1","reason":"mitigation failed","seq":46,"msg_id":null,"run_id":null}
