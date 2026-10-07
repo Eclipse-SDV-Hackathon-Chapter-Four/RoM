@@ -208,9 +208,10 @@ Things to know:
   topology. In a simulator-only run (`make guardian`) Cell 1 is also simulated and the "AZ3166" data source shows
   `NO HEARTBEAT`. Do not present a simulator-only run as hardware.
 
-**Safety Evidence** (`#/evidence`): the Evidence Collector's own `report.html` of a **saved snapshot** (`runs/<id>/`), embedded
-unchanged, with the run id and the PASS / FAIL / INCONCLUSIVE counts and a checksum badge. It does not change while you run
-scenarios; see [13](#13-evidence-snapshots-safety-evidence). The two tabs are plain links (`#/live`, `#/evidence`), so a reload or a shared URL stays on the same view.
+**Safety Evidence** (`#/evidence`) has two modes. **Live** (default): the running Evidence Collector's report, reloaded as
+soon as a new verdict arrives, with the PASS / FAIL / INCONCLUSIVE counts and the run being judged right now; a scenario
+started from the dropdown shows up here without any command. **Saved run**: the `report.html` of a saved snapshot
+(`runs/<id>/`), embedded unchanged, with a checksum badge; see [13](#13-evidence-snapshots-safety-evidence). The two tabs are plain links (`#/live`, `#/evidence`), so a reload or a shared URL stays on the same view.
 
 ## 9. Run and stop scenarios from the UI
 
@@ -380,7 +381,8 @@ Before: stack healthy (`curl -s localhost:8082/health`), `make dashboard` up, a 
    of Pack Max, and the Guardian *stays* `MONITORING`. "A bad sensor is not a thermal event."
 4. **Optional, Stop.** Start any short scenario (`transport_drop`), click **Stop**: it ends as `stopped`, the stack carries on.
    Say: the evidence will show INCONCLUSIVE ("interrupted"), not PASS, on purpose.
-5. **Safety Evidence.** `make evidence-snapshot`, then open `#/evidence` (Rescan): run id, counts, the report with the
+5. **Safety Evidence.** Open `#/evidence` (**Live**): the scenarios you just ran are already there with their verdicts.
+   For the checksum badge: `make evidence-snapshot`, then **Saved run** (Rescan): run id, counts, the report with the
    timeline and verdicts per campaign, the checksum badge. The numbers are what the Collector recorded.
 
 **If live scenario control fails:** the monitoring view still works; run `make campaign C=thermal_runaway` in a terminal
@@ -444,7 +446,7 @@ docker logs --tail 50 rom-dashboard-dev  # dashboard dev server (also: scripts/d
 | Run fails at once with `Get "http://localhost/v2/"` | the fault-injector image is missing and Docker tries to pull `localhost/rom/...` | `make images` |
 | New scenarios missing in the dropdown / old behaviour after `git pull` | images and containers are from before the pull | `make images`, then `make guardian` (and `make dashboard`) |
 | "No completed evidence run available." | no `runs/<id>/` with the three files | `make evidence-snapshot` |
-| Safety Evidence shows an old run | it shows the newest **saved** snapshot, not the live Collector | `make evidence-snapshot`, then Rescan |
+| Safety Evidence shows an old run | you are on **Saved run**, the newest saved snapshot | switch to **Live**, or `make evidence-snapshot`, then Rescan |
 | A stopped scenario shows INCONCLUSIVE | intended: an interrupted campaign cannot be PASS | nothing to fix; do not delete it |
 | Live Collector has more records / INCONCLUSIVE ones | it keeps all earlier tests in volume `evidence-data` | nothing to fix; use snapshots, see [12](#12-evidence-collector-and-verdicts) |
 | `EACCES` in `node_modules` or `dist` | a container that ran as root created files in the clone | `sudo chown -R $USER services/dashboard/node_modules services/dashboard/dist` |
