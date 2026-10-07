@@ -7,12 +7,16 @@ DC = $(DC_BIN) -f infra/docker-compose.yml
 VENV = .venv
 PY = $(VENV)/bin/python
 
-.PHONY: help up down logs kuksa sim sim-up guardian campaign campaigns adapter hw images venv sim-local test-local shell test
+.PHONY: help mqtt-restart up down logs kuksa sim sim-up guardian campaign campaigns adapter hw images venv sim-local test-local shell test
 
 help:   ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
 
-up:     ## start databroker + mosquitto in the background
+mqtt-restart: ## recreate mosquitto (fresh broker, host port 1883 re-published); runs before up / guardian / adapter / hw
+	$(DC) up -d --force-recreate mosquitto
+	@ss -ltn 2>/dev/null | grep -q ':1883 ' || { echo "WARNING: nothing listens on host port 1883 (is another broker or a stale container holding it?)"; exit 1; }
+
+up:     mqtt-restart ## start databroker + mosquitto in the background (mosquitto always recreated)
 	$(DC) up -d databroker mosquitto
 
 down:   ## stop everything
@@ -30,14 +34,14 @@ sim:    ## sine-wave temperature simulator into KUKSA (foreground; SIM_PERIOD_S=
 sim-up: ## databroker + simulator in the background; then `make kuksa` in another terminal
 	$(DC) --profile tools up -d databroker simulator
 
-guardian: ## databroker + simulator + vss-uprotocol-client + guardian, follows guardian logs (Ctrl+C stops following)
+guardian: mqtt-restart ## databroker + simulator + vss-uprotocol-client + guardian, follows guardian logs (Ctrl+C stops following)
 	$(DC) --profile tools up -d --build databroker simulator vss-uprotocol-client guardian
 	$(DC) --profile tools logs -f guardian
 
-adapter: ## MQTT -> KUKSA adapter in the foreground (starts databroker + mosquitto; stop the simulator first)
+adapter: mqtt-restart ## MQTT -> KUKSA adapter in the foreground (starts databroker + mosquitto; stop the simulator first)
 	$(DC) --profile tools run --rm adapter
 
-hw:     ## hardware run: AZ3166 -> mosquitto -> adapter -> databroker -> vss-uprotocol-client -> guardian (no simulator)
+hw:     mqtt-restart ## hardware run: AZ3166 -> mosquitto -> adapter -> databroker -> vss-uprotocol-client -> guardian (no simulator)
 	$(DC) --profile tools stop simulator
 	$(DC) --profile tools up -d --build databroker mosquitto adapter vss-uprotocol-client guardian
 	$(DC) --profile tools logs -f adapter guardian

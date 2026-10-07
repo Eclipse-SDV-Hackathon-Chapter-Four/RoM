@@ -38,6 +38,7 @@ make down                        # stop everything
 | Command | What it does |
 |---|---|
 | `make help` | list all commands |
+| `make mqtt-restart` | recreate mosquitto (fresh broker, host port 1883 re-published). `up`, `guardian`, `adapter` and `hw` do this first, so the broker is always reachable from the board and your laptop; it fails loudly if something else holds port 1883 |
 | `make up` | start databroker + mosquitto in the background |
 | `make guardian` | databroker + simulator + vss-uprotocol-client + guardian, follow guardian logs |
 | `make images` | build all service images `localhost/rom/<service>:dev` |
