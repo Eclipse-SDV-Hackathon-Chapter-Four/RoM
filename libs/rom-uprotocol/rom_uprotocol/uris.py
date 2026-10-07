@@ -74,6 +74,11 @@ def evidence_collector_uri(authority: Optional[str] = None) -> UUri:
     return UUri(authority_name=_authority(authority), ue_id=contract.UP_EVIDENCE_COLLECTOR_UE_ID, ue_version_major=1)
 
 
+def simulator_uri(authority: Optional[str] = None) -> UUri:
+    """uEntity of the simulator's cooling actuator (a listener only)."""
+    return UUri(authority_name=_authority(authority), ue_id=contract.UP_SIMULATOR_UE_ID, ue_version_major=1)
+
+
 def monitor_uri(authority: Optional[str] = None) -> UUri:
     """uEntity of the rom-up-monitor tool (a listener only, never published as a source)."""
     return UUri(authority_name=_authority(authority), ue_id=contract.UP_MONITOR_UE_ID, ue_version_major=1)

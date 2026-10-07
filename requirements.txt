@@ -5,7 +5,7 @@
 -e ./libs/rom-uprotocol
 -e ./services/vss-uprotocol-client
 -e ./services/guardian
--e ./services/simulator
+-e ./services/simulator[cooling]
 -e ./services/adapter
 -e ./services/fault-injector[uprotocol]
 -e ./services/evidence-collector[test]

@@ -97,6 +97,7 @@ pytest -q
 | `STALE_MS`, `STUCK_S`, `MIN_PLAUSIBLE_C`, `MAX_PLAUSIBLE_C` | `2000`, `10`, `-40`, `150` | guardian (`STALE_MS` is also the uProtocol TTL) |
 | `VSS_SOURCE_PATH` | `Vehicle.Powertrain.TractionBattery.Temperature.Max` | vss-uprotocol-client |
 | `SIM_CELLS` | `1,2,3,4` | simulator (`2,3,4` when the real board is cell 1) |
+| `SIM_COOLING`, `SIM_COOLING_C_PER_S`, `SIM_COOLING_RELAX_C_PER_S` | unset (compose: `1`), `3`, `0.2` | simulator as the cooling actuator: cells cool while the guardian is `MITIGATING` ([simulator](services/simulator/README.md#cooling-the-simulator-as-the-cooling-actuator)) |
 | `ADAPTER_CELL` | `1` | adapter: which cell the board is |
 | `HEARTBEAT_PERIOD_MS`, `HEARTBEAT_STALE_MS` | `500`, `1500` | client, adapter, simulator / guardian |
 | `CHIP_TIMEOUT_MS` | `1500` | adapter: no telemetry for this long reports the chip heartbeat as 0 |

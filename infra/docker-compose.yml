@@ -50,6 +50,8 @@ services:
       SIM_CELLS: ${SIM_CELLS:-1,2,3,4}  # `make hw`: 2,3,4, the real board is cell 1 (adapter)
       SIM_API_HOST: 0.0.0.0            # fault API for the fault-injector (and curl); no authentication
       SIM_API_PORT: 8080
+      SIM_COOLING: ${SIM_COOLING:-1}   # cooling actuator: cells cool while the guardian is MITIGATING (simulator/cooling.py)
+      ZENOH_CONNECT: tcp/guardian:7447 # guardian state up://rom-vehicle/1002/1/8006; Zenoh retries until the guardian is up
     ports: ["127.0.0.1:8080:8080"]     # loopback only: keep the unauthenticated fault API off the network
     depends_on: [databroker]
 

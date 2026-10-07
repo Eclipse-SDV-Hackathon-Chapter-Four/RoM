@@ -35,6 +35,7 @@ UP_CAMPAIGN_RUNNER_UE_VERSION = 1
 UP_RESOURCE_CAMPAIGN_EVENT = 0x8005      # topic: campaign start / fault injected / cleared / end (evidence markers)
 UP_RESOURCE_GUARDIAN_STATE = 0x8006      # topic: guardian state, on every change and periodically
 UP_EVIDENCE_COLLECTOR_UE_ID = 0x1004     # uEntity "Evidence Collector" (a listener only)
+UP_SIMULATOR_UE_ID = 0x1005              # uEntity "Simulator" as the cooling actuator (listens to the guardian state)
 UP_MONITOR_UE_ID = 0x10FF                # uEntity of the rom-up-monitor tool
 
 
