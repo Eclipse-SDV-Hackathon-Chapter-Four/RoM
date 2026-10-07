@@ -45,6 +45,7 @@ hazard: "H1: thermal runaway of a single traction battery cell"
 safety_goal: "SG1: warn at 38 °C and request cooling at 45 °C pack maximum"
 expected_state: CRITICAL            # CLEAR | MONITORING | WARNING | CRITICAL | SENSOR_FAULT | MITIGATING
 expected_faults: [battery_guardian.over_temp_critical]   # DFM codes OpenSOVD must show (rom_common.contracts.FAULT_CODES)
+tolerated_faults: []      # optional: codes that may show up as a side effect (no false alarm), not required or timed
 max_detect_ms: 35000                # ... reached within this long after the first fault
 duration_s: 70                      # optional; default = last fault end + settle_s (default 10)
 baseline: {min_c: 25, max_c: 32}    # optional calm wave, so only the fault moves the guardian
@@ -68,7 +69,7 @@ Bundled campaigns (`fault_injector/campaigns/`), or pass a path to your own:
 | `source_dropout` | all cells dropped | `SENSOR_FAULT` (stale) | `signal_stale` |
 | `replay_interruption` | source stalls and resumes | `SENSOR_FAULT` (stale) | `signal_stale` |
 | `transport_drop` | every message dropped | `SENSOR_FAULT` (stale) | `signal_stale` |
-| `transport_delay` | messages 2.5 s late | `SENSOR_FAULT` (stale), recovers after about 1 s once the late messages keep arriving | `signal_stale` |
+| `transport_delay` | messages 2.5 s late | `SENSOR_FAULT` (stale), recovers after about 1 s once the late messages keep arriving | `signal_stale` (tolerated: `link_integrity`, late and fresh messages interleave when the delay ends) |
 | `combined_runaway_lossy_link` | drift + duplicate + 600 ms delay | `CRITICAL` | as `thermal_runaway` |
 | `cell_faulty_while_other_hot` | cell 3 stuck + cell 1 drifts up | `CRITICAL` (the stuck cell is left out, the warning still fires) | `cell3.signal_stuck`, `over_temp_warning`, `over_temp_critical`, `cell_imbalance` |
 | `chip_heartbeat_loss` | the chip stops beating, data flows | `SENSOR_FAULT` "chip silent" | `chip_silent` |
@@ -91,7 +92,7 @@ their first beat), so run them against a stack that has been up for a few second
 
 ## Log events
 
-`campaign_start` (hazard, safety_goal, expected_state, expected_faults, max_detect_ms, seed, baseline, faults), `fault_injected`,
+`campaign_start` (hazard, safety_goal, expected_state, expected_faults, tolerated_faults, max_detect_ms, seed, baseline, faults), `fault_injected`,
 `fault_cleared` (`scheduled` / `campaign_end`), `fault_failed`, `campaign_end` (`completed` / `aborted` /
 `interrupted`). The runner does not judge the run: comparing the guardian's state (`…/1002/1/8006`) with
 `expected_state` and `max_detect_ms`, and checking `expected_faults` in OpenSOVD, is the

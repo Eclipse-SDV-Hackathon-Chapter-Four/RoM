@@ -259,7 +259,7 @@ a label made from its name). There were 22 when this was written; `make campaign
 |---|---|---|---|
 | Thermal Runaway | `thermal_runaway` | cell 1 heats +0.7 °C/s for 50 s | CRITICAL: warning at 38 °C, cooling requested at 45 °C (`over_temp_warning`, `over_temp_critical`, `cell_imbalance`) |
 | Transport Drop | `transport_drop` | every uProtocol cell message is lost for 8 s (KUKSA still fresh) | SENSOR_FAULT `signal_stale` within 4 s |
-| Transport Delay | `transport_delay` | messages arrive 2.5 s late for 10 s | SENSOR_FAULT `signal_stale` (late data is not current) |
+| Transport Delay | `transport_delay` | messages arrive 2.5 s late for 10 s | SENSOR_FAULT `signal_stale` (late data is not current) (tolerated: `link_integrity` when the delay ends) |
 | Sensor Stuck | `sensor_stuck` | all four cell sensors frozen for 20 s | SENSOR_FAULT, stuck detected within 10 s |
 | Sensor Stuck, Cell 3 | `sensor_stuck_cell3` | cell 3 frozen for 20 s | MONITORING; `cell3.signal_stuck`, cell 3 excluded |
 | Out of Range | `out_of_range` | cell 1 reads 200 °C for 10 s | MONITORING; `cell1.out_of_range`, no false overheat |

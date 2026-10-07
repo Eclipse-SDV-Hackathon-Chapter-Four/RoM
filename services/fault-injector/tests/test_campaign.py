@@ -115,6 +115,15 @@ def test_expected_faults_are_optional_deduplicated_and_checked_against_the_catal
             campaign.parse(with_(expected_faults=bad))
 
 
+
+def test_tolerated_faults_are_optional_and_checked_against_the_catalog():
+    assert campaign.parse(BASE).tolerated_faults == []
+    assert campaign.parse(with_(tolerated_faults=["battery_guardian.link_integrity"])).tolerated_faults == [
+        "battery_guardian.link_integrity"]
+    with pytest.raises(CampaignError, match="tolerated_faults"):
+        campaign.parse(with_(tolerated_faults=["battery_guardian.nope"]))
+
+
 def test_load_by_name_path_and_errors(tmp_path):
     assert campaign.load("thermal_runaway.yaml").run_id == campaign.load("thermal_runaway").run_id
     p = tmp_path / "mine.yaml"

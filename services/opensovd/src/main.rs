@@ -5,7 +5,7 @@
 //! one SOVD app per DFM entity path (default `battery_guardian`), hosted on component `rom-hpc`, and
 //! adds the `faults` resource on top, read live from the DFM over iceoryx2 (`dfm/query`):
 //!
-//!   guardian --MQTT--> rom-dfm report --fault-lib Reporter--> dfm_bin --dfm/query--> rom-opensovd --HTTP--> client
+//!   guardian --uProtocol--> rom-dfm report --fault-lib Reporter--> dfm_bin --dfm/query--> rom-opensovd --HTTP--> client
 //!
 //!   curl http://localhost:7690/sovd/v1/apps/battery_guardian/faults
 //!

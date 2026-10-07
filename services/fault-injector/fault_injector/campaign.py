@@ -7,6 +7,7 @@
     safety_goal: "SG1: warn at 38 °C and request cooling at 45 °C"
     expected_state: CRITICAL            # what the guardian must reach (evidence collector checks it)
     expected_faults: [battery_guardian.over_temp_critical]   # DFM codes that must show up in OpenSOVD (optional)
+    tolerated_faults: []                # optional; DFM codes that may show up as a side effect, not required or timed
     max_detect_ms: 15000                # ... within this long after the first fault
     expected_verdict: PASS              # optional; FAIL for a campaign that breaks the evidence chain on purpose
     duration_s: 60                      # optional; default = last fault end + settle_s (default 10)
@@ -77,6 +78,7 @@ class Campaign:
     baseline: dict = field(default_factory=dict)
     expected_faults: List[str] = field(default_factory=list)
     expected_verdict: str = "PASS"
+    tolerated_faults: List[str] = field(default_factory=list)
 
     def targets(self) -> set:
         return {f.target for f in self.faults}
@@ -107,14 +109,14 @@ def _baseline(raw) -> dict:
     return out
 
 
-def _expected_faults(raw) -> List[str]:
+def _expected_faults(raw, key: str = "expected_faults") -> List[str]:
     if raw is None:
         return []
     if not isinstance(raw, list) or not all(isinstance(c, str) for c in raw):
-        raise CampaignError("expected_faults must be a list of DFM fault codes")
+        raise CampaignError(f"{key} must be a list of DFM fault codes")
     unknown = [c for c in raw if c not in FAULT_CODES]
     if unknown:
-        raise CampaignError(f"expected_faults: unknown codes {', '.join(unknown)} (see rom_common.contracts.FAULT_CODES)")
+        raise CampaignError(f"{key}: unknown codes {', '.join(unknown)} (see rom_common.contracts.FAULT_CODES)")
     return list(dict.fromkeys(raw))
 
 
@@ -150,7 +152,7 @@ def _fault(index: int, raw) -> FaultStep:
 def parse(data) -> Campaign:
     if not isinstance(data, dict):
         raise CampaignError("a campaign is a YAML mapping")
-    known = {"run_id", "seed", "hazard", "safety_goal", "expected_state", "expected_faults", "max_detect_ms",
+    known = {"run_id", "seed", "hazard", "safety_goal", "expected_state", "expected_faults", "tolerated_faults", "max_detect_ms",
              "expected_verdict", "duration_s", "settle_s", "baseline", "faults"}
     if set(data) - known:
         raise CampaignError(f"unknown keys {', '.join(sorted(set(data) - known))}")
@@ -175,7 +177,7 @@ def parse(data) -> Campaign:
     return Campaign(_text(data, "run_id"), seed, _text(data, "hazard"), _text(data, "safety_goal"),
                     data["expected_state"], int(_number(data.get("max_detect_ms"), "max_detect_ms", 0, False)),
                     duration, faults, _baseline(data.get("baseline")), _expected_faults(data.get("expected_faults")),
-                    data.get("expected_verdict", "PASS"))
+                    data.get("expected_verdict", "PASS"), _expected_faults(data.get("tolerated_faults"), "tolerated_faults"))
 
 
 def resolve(name_or_path: str) -> Path:

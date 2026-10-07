@@ -67,6 +67,14 @@ def test_false_alarm_fails_once_per_code():
     assert sum("unexpected fault" in t for t in texts(j)) == 1
 
 
+
+def test_tolerated_fault_is_no_false_alarm_and_needs_no_timing():
+    integrity = "battery_guardian.link_integrity"
+    start = {**observed().start, "tolerated_faults": [integrity]}
+    j = judge(observed(start=start, faults=observed().faults + [fault(integrity, T0 + 60_000)]))
+    assert j.verdict == PASS and j.unexpected_faults == []
+
+
 def test_critical_without_cooling_fails():
     j = judge(observed(states=observed().states[:2]))
     assert j.verdict == FAIL and "CRITICAL without MITIGATING: cooling was never requested" in texts(j)
