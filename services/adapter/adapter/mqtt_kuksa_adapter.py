@@ -16,6 +16,11 @@ The adapter also keeps two heartbeats alive in KUKSA (Vehicle.RoM.Heartbeat.*), 
            timeout on top of CHIP_TIMEOUT_MS.
 so the guardian can tell "board silent" from "adapter dead" from "databroker down".
 
+Cell 1 source switch (ADAPTER_API_PORT, 0 = off; the dashboard uses it together with the simulator's POST /cells):
+  GET  /source                  {"enabled": true}
+  POST /source {"enabled": false}  stop writing the board's temperature and the chip heartbeat, so the simulator can
+                                   own cell 1 alone; the Adapter heartbeat keeps going. ADAPTER_ENABLED sets the start.
+
 Run:  rom-adapter   (or  python -m adapter.mqtt_kuksa_adapter)
 """
 import itertools
@@ -25,6 +30,7 @@ import threading
 import time
 
 from rom_common import clock, config, contracts, jsonlog, kuksa, mqtt
+from rom_common.control import ControlError, ControlServer
 
 
 def build_mapping(cell: int = 1) -> dict:
@@ -72,9 +78,10 @@ class ChipLiveness:
 class Adapter:
     """Transport-free core: handle(topic, payload) -> validate -> write({vss_path: value})."""
 
-    def __init__(self, write, log, mapping=None, chip_timeout_s=None, monotonic=time.monotonic):
+    def __init__(self, write, log, mapping=None, chip_timeout_s=None, monotonic=time.monotonic, enabled=True):
         self._write = write  # ({vss_path: value}) -> None, raises on failure
         self._log = log
+        self.enabled = enabled  # False: the simulator owns cell 1, nothing from the board reaches KUKSA
         self._mapping = mapping if mapping is not None else MAPPING
         timeout_s = chip_timeout_s if chip_timeout_s is not None else config.heartbeat().chip_timeout_ms / 1000
         self.chip = ChipLiveness(timeout_s, monotonic)
@@ -86,6 +93,7 @@ class Adapter:
         self.received = 0
         self.rejected = 0
         self.written = 0
+        self.ignored = 0
 
     def handle(self, topic, payload):
         self.received += 1
@@ -104,6 +112,9 @@ class Adapter:
 
         self._check_seq(msg)
         self.chip.on_telemetry()
+        if not self.enabled:
+            self.ignored += 1
+            return
 
         values = {path: msg.temp_c * scale + offset for path, scale, offset in mapping}
         try:
@@ -132,6 +143,8 @@ class Adapter:
         """Heartbeat counters for this tick: Adapter always, Chip a counter while the board is alive, else 0."""
         self._beats += 1
         values = {contracts.VSS_HEARTBEAT_ADAPTER: float(self._beats)}
+        if not self.enabled:   # the simulator writes the chip heartbeat while it owns cell 1
+            return values
         alive = self.chip.alive()
         if alive:
             self._chip_beats += 1
@@ -152,6 +165,12 @@ class Adapter:
             return False
         self._beat_failed = False
         return True
+
+    def set_enabled(self, enabled: bool) -> None:
+        if enabled != self.enabled:
+            self.enabled = enabled
+            self._chip_was_alive = None
+            self._log.log("source_enabled" if enabled else "source_disabled")
 
     def _reject(self, topic, reason):
         self.rejected += 1
@@ -205,6 +224,19 @@ class KuksaWriter:
             self._client = None
 
 
+def build_api(adapter, host, port):
+    def set_source(body, params):
+        if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
+            raise ControlError(422, 'expected {"enabled": true|false}')
+        adapter.set_enabled(body["enabled"])
+        return {"enabled": adapter.enabled}
+
+    server = ControlServer(host, port)
+    server.route("GET", "/source", lambda body, params: {"enabled": adapter.enabled})
+    server.route("POST", "/source", set_source)
+    return server
+
+
 def heartbeat_loop(adapter, period_s, stop):
     while not stop.is_set():
         adapter.beat()
@@ -216,7 +248,9 @@ def main():
     ep = config.endpoints()
     hb = config.heartbeat()
     writer = KuksaWriter(log)
-    adapter = Adapter(writer, log)
+    adapter = Adapter(writer, log, enabled=os.environ.get("ADAPTER_ENABLED", "1").lower() not in ("0", "false", "no"))
+    api_port = int(os.environ.get("ADAPTER_API_PORT", "0"))
+    api = build_api(adapter, os.environ.get("ADAPTER_API_HOST", "127.0.0.1"), api_port).start() if api_port else None
 
     def on_message(topic, payload):
         try:
@@ -230,7 +264,8 @@ def main():
     topics = [contracts.TOPIC_SENSOR_TEMP, contracts.TOPIC_SENSOR_STATUS]
     client.connect(on_connected=lambda _: log.log("mqtt_connected", topics=topics))
     log.log("started", mqtt=f"{ep.mqtt_host}:{ep.mqtt_port}", kuksa=f"{ep.kuksa_host}:{ep.kuksa_port}",
-            mapping=MAPPING, heartbeat_period_ms=hb.period_ms, chip_timeout_ms=hb.chip_timeout_ms)
+            mapping=MAPPING, heartbeat_period_ms=hb.period_ms, chip_timeout_ms=hb.chip_timeout_ms,
+            enabled=adapter.enabled, api_port=api_port or None)
 
     stop = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: stop.set())
@@ -240,7 +275,10 @@ def main():
 
     client.close()
     writer.close()
-    log.log("stopped", received=adapter.received, rejected=adapter.rejected, written=adapter.written)
+    if api is not None:
+        api.close()
+    log.log("stopped", received=adapter.received, rejected=adapter.rejected, written=adapter.written,
+            ignored=adapter.ignored)
 
 
 if __name__ == "__main__":

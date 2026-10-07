@@ -8,6 +8,8 @@
     GET    /faults      active faults
     DELETE /faults/{id} clear one fault        DELETE /faults  clear all
     GET    /state       run id, seed, source time, last cell values, Max, active faults
+    GET    /cells       {"cells": [1, 2, 3, 4]}  the cells it writes
+    POST   /cells       {"cells": [2, 3, 4]}     leave cell 1 (and Max, chip heartbeat) to the adapter, or take it back
     GET    /health
 
 "cell": 3 or "cells": [1, 3]; neither means all cells. Fault types: see faults.py.
@@ -76,10 +78,22 @@ def build_api(session, faults: FaultState, log, host: str, port: int) -> Control
             log.log("fault_cleared", reason="api", **f.as_dict())
         return {"cleared": [f.id for f in removed]}
 
+    def set_cells(body, params):
+        cells = _need_body(body).get("cells")
+        if (not isinstance(cells, list) or not cells
+                or not all(isinstance(c, int) and not isinstance(c, bool) and 1 <= c <= 4 for c in cells)):
+            raise ControlError(422, "cells must be a non-empty list of cell numbers 1..4")
+        before, after = session.cells, session.set_cells(cells)
+        if after != before:
+            log.log("cells_changed", before=list(before), after=list(after))
+        return {"cells": list(after)}
+
     server.route("POST", "/run", start_run)
     server.route("POST", "/faults", inject)
     server.route("GET", "/faults", lambda body, params: [f.as_dict() for f in faults.active()])
     server.route("DELETE", "/faults/{id}", clear_one)
     server.route("DELETE", "/faults", clear_all)
     server.route("GET", "/state", lambda body, params: session.snapshot())
+    server.route("GET", "/cells", lambda body, params: {"cells": list(session.cells)})
+    server.route("POST", "/cells", set_cells)
     return server

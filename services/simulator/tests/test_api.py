@@ -113,3 +113,14 @@ def test_heartbeat_loss_over_the_api(env):
     status, fault = call(server, "POST", "/faults", {"type": "heartbeat_loss", "params": {"component": "chip"}})
     assert status == 201 and faults.heartbeat_lost("chip")
     assert call(server, "POST", "/faults", {"type": "heartbeat_loss", "params": {"component": "x"}})[0] == 422
+
+
+def test_cells_can_be_switched_and_bad_lists_are_422(env):
+    server, _, session, out = env
+    assert call(server, "GET", "/cells") == (200, {"cells": [1, 2, 3, 4]})
+    assert call(server, "POST", "/cells", {"cells": [4, 2, 3]}) == (200, {"cells": [2, 3, 4]})
+    assert session.cells == (2, 3, 4)
+    for bad in ([], [0], [5], ["1"], [True], "1,2"):
+        assert call(server, "POST", "/cells", {"cells": bad})[0] == 422
+    assert session.cells == (2, 3, 4)
+    assert [e["event"] for e in events(out)] == ["cells_changed"]

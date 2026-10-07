@@ -8,7 +8,8 @@ and Vehicle.Powertrain.TractionBattery.Temperature.Max = the hottest cell that w
 so without faults Max is the plain wave. Run only one writer of each path at a time.
 
 SIM_CELLS limits the cells it simulates (default 1,2,3,4). With a real board as cell 1 (`make hw`) run SIM_CELLS=2,3,4:
-the simulator then leaves cell 1 and Max to the adapter. Every tick it also writes the heartbeat counters
+the simulator then leaves cell 1 and Max to the adapter. The set can change while it runs (POST /cells, the dashboard's
+cell 1 source switch), so cell 1 always has exactly one writer. Every tick it also writes the heartbeat counters
 Vehicle.RoM.Heartbeat.Simulator (always) and Vehicle.RoM.Heartbeat.Chip (a simulated chip, only if it owns cell 1).
 
 Faults are injected over HTTP while it runs (SIM_API_PORT, see api.py and README.md): the signal of a cell can be
@@ -54,6 +55,17 @@ class Session:
         self._restart = False
         self._wave: dict = {}
         self._state: dict = {}
+        self._cells: tuple = ALL_CELLS
+
+    @property
+    def cells(self) -> tuple:
+        with self._lock:
+            return self._cells
+
+    def set_cells(self, cells) -> tuple:
+        with self._lock:
+            self._cells = tuple(sorted(set(cells)))
+            return self._cells
 
     def restart(self, seed: int, run_id: Optional[str], wave: Optional[dict] = None) -> None:
         """New run: the loop starts the wave over at t=0 with this seed (and wave = min_c / max_c / period_s)."""
@@ -92,9 +104,9 @@ def run(sink: Callable[[Dict[str, float]], None], log, hz: float = 2.0, period_s
     cooling (optional) lowers every simulated cell before the faults are applied.
     max_slew_c_per_s (optional) limits how fast a cell without a sensor fault may change (thermal inertia).
     """
-    cells = tuple(sorted(set(cells)))
     faults = faults if faults is not None else FaultState(monotonic)
     session = session if session is not None else Session()
+    cells = session.set_cells(cells)
     log.log("campaign_start", profile="sine", hz=hz, period_s=period_s, min_c=min_c, max_c=max_c,
             duration_s=duration_s, path=VSS_BATTERY_TEMP, cells=[VSS_CELL_TEMPS[c - 1] for c in cells],
             seed=session.seed, writes_max=cells == ALL_CELLS)
@@ -111,6 +123,7 @@ def run(sink: Callable[[Dict[str, float]], None], log, hz: float = 2.0, period_s
                                                                        ("max_c", max_c)))
                 if cooling is not None:
                     cooling.reset()
+            cells = session.cells
             for f in faults.expire():
                 log.log("fault_cleared", reason="expired", **f.as_dict())
             stalled = faults.source_stalled()

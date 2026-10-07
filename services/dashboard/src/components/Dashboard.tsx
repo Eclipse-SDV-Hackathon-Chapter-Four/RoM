@@ -8,6 +8,8 @@ import RecentEvents from "./RecentEvents";
 import LiveStatus from "./LiveStatus";
 import DemoControls from "./DemoControls";
 import ScenarioRunner from "./ScenarioRunner";
+import Cell1SourceSwitch from "./Cell1SourceSwitch";
+import { useCell1Source } from "../data/cell1Source";
 import DataSourcesCard from "./DataSourcesCard";
 import SystemFlow from "./SystemFlow";
 import BatteryCellsCard from "./BatteryCellsCard";
@@ -42,6 +44,15 @@ export default function Dashboard({ source, view }: { source: DashboardDataSourc
     source.demo?.resume();
     select("ALL");
   };
+  // Cell 1 is either the AZ3166 board or simulated (one writer, chosen with the switch); until the switch answers,
+  // keep the default topology
+  const cell1 = useCell1Source(live);
+  const cell1Hw = cell1.state ? cell1.state.mode === "hw" : true;
+  const cells = data?.battery.cells.map((c) => (c.id === 1 ? { ...c, source: cell1Hw ? ("HW" as const) : ("SIM" as const) } : c));
+  const battery = data && cells ? { ...data.battery, cells } : undefined;
+  const sources = data?.sources.map((s) =>
+    s.id === "az3166" ? { ...s, cells: cell1Hw ? [1] : [] } : s.id === "simulator" ? { ...s, cells: cell1Hw ? [2, 3, 4] : [1, 2, 3, 4] } : s,
+  );
 
   return (
     <div className="page">
@@ -61,7 +72,7 @@ export default function Dashboard({ source, view }: { source: DashboardDataSourc
               <p>
                 {source.label} (uProtocol bus)
                 <br />
-                Cell 1 AZ3166 · Cells 2–4 simulator
+                {cell1Hw ? "Cell 1 AZ3166 · Cells 2–4 simulator" : "Cells 1–4 simulator"}
               </p>
             </>
           ) : (
@@ -81,21 +92,22 @@ export default function Dashboard({ source, view }: { source: DashboardDataSourc
       <div className="demo-bar">
         <LiveStatus live={live} label={live ? "Hardware + simulator" : "Simulated telemetry"} connected={!(live && error)} />
         {live && <ScenarioRunner />}
+        {live && <Cell1SourceSwitch {...cell1} />}
         {source.demo && <DemoControls support={source.demo} override={data?.demo_override ?? null} onApply={applyDemo} onResume={resumeDemo} />}
       </div>
 
       {error && <div className="error-banner" role="alert">Data source error: {error}</div>}
 
-      {data ? (
+      {data && battery && sources ? (
         <main className="grid">
-          <BatteryCellsCard battery={data.battery} selection={selection} onSelect={select} />
-          <GuardianStateCard guardian={data.guardian} battery={data.battery} />
+          <BatteryCellsCard battery={battery} selection={selection} onSelect={select} />
+          <GuardianStateCard guardian={data.guardian} battery={battery} />
           <div className="side-stack">
-            <DataSourcesCard sources={data.sources} />
+            <DataSourcesCard sources={sources} />
             <LastMessageCard message={data.message} updatedAt={data.timestamp} />
           </div>
-          <TemperatureChart history={data.history} battery={data.battery} now={data.timestamp} selection={selection} onShowAll={() => select("ALL")} />
-          <RecentEvents events={data.events} cells={data.battery.cells} filter={eventFilter} onFilter={setEventFilter} />
+          <TemperatureChart history={data.history} battery={battery} now={data.timestamp} selection={selection} onShowAll={() => select("ALL")} />
+          <RecentEvents events={data.events} cells={battery.cells} filter={eventFilter} onFilter={setEventFilter} />
           <SystemFlow />
         </main>
       ) : (
