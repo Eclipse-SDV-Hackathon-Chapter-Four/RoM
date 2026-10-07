@@ -196,7 +196,8 @@ def test_databroker_reporting_down_is_named_at_once_while_the_link_is_fine():
 def test_a_databroker_beat_that_goes_silent_counts_like_down():
     g = monitored()
     alive(g, 1)
-    beat(g, 2.9, COMPONENT_UPROTOCOL)
+    beat(g, 2.0, COMPONENT_UPROTOCOL)                      # the link keeps beating every period ...
+    beat(g, 2.9, COMPONENT_UPROTOCOL)                      # ... only the databroker beat is missing
     assert g.update(2.9, healthy(2.9)) == (SENSOR_FAULT, "KUKSA down")
 
 
@@ -235,11 +236,13 @@ def test_producer_is_blamed_before_the_chip_and_simulator_is_named_sim_down():
     g = monitored()
     beat(g, 0.5, COMPONENT_ADAPTER, COMPONENT_CHIP)
     alive(g, 1)
+    beat(g, 2.0, COMPONENT_UPROTOCOL, COMPONENT_DATABROKER)
     beat(g, 3.0, COMPONENT_UPROTOCOL, COMPONENT_DATABROKER)
     assert g.update(3.0, healthy(3.0)) == (SENSOR_FAULT, "adapter down") and g.lost == [COMPONENT_ADAPTER, COMPONENT_CHIP]
     g = monitored()
     beat(g, 0.5, COMPONENT_SIMULATOR)
     alive(g, 1)
+    beat(g, 2.0, COMPONENT_UPROTOCOL, COMPONENT_DATABROKER)
     beat(g, 3.0, COMPONENT_UPROTOCOL, COMPONENT_DATABROKER)
     assert g.update(3.0, healthy(3.0)) == (SENSOR_FAULT, "sim down")
 
@@ -248,6 +251,7 @@ def test_a_sharper_root_cause_replaces_the_code_and_the_edges_say_so():
     g = monitored()
     beat(g, 0.5, COMPONENT_CHIP)
     alive(g, 1)
+    beat(g, 2.0, COMPONENT_UPROTOCOL, COMPONENT_DATABROKER)
     beat(g, 3.0, COMPONENT_UPROTOCOL, COMPONENT_DATABROKER)
     g.update(3.0, healthy(3.0))                            # chip silent
     before = g.faults
@@ -349,3 +353,20 @@ def test_loop_survives_a_sensor_fault_before_any_cell_was_seen():
     events, _, _ = run_loop(beat_msg(COMPONENT_UPROTOCOL, HB_DOWN))
     change = [e for e in events if e["event"] == "state_change"][0]
     assert change["to"] == "SENSOR_FAULT" and change["temp_c"] is None
+
+
+def test_when_the_link_comes_back_the_other_components_are_not_blamed_while_their_beats_are_on_their_way():
+    g = monitored()
+    beat(g, 0.5, COMPONENT_SIMULATOR)
+    for t in (1, 1.5, 2):
+        beat(g, t, COMPONENT_UPROTOCOL, COMPONENT_DATABROKER, COMPONENT_SIMULATOR)
+    g.update(2, healthy(2))
+    assert g.update(5, None)[1] == "uP link lost"                     # a 3 s hole in all beats
+    beat(g, 5.1, COMPONENT_UPROTOCOL)                                 # the link is back, the others not yet
+    assert g.update(5.1, healthy(5.1))[0] == MONITORING and g.lost == [] and g.faults == {}
+    beat(g, 5.4, COMPONENT_DATABROKER, COMPONENT_SIMULATOR)
+    assert g.update(5.4, healthy(5.4))[0] == MONITORING
+    beat(g, 6.0, COMPONENT_UPROTOCOL)
+    beat(g, 6.5, COMPONENT_UPROTOCOL)
+    g.update(7.0, healthy(7.0))                                       # databroker really went silent afterwards
+    assert g.lost[0] == COMPONENT_DATABROKER
