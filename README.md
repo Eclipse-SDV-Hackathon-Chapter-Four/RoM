@@ -330,7 +330,7 @@ flowchart LR
 - [x] Signal faults: stuck · spike · drift · out-of-range
 - [x] Source faults: dropout · replay interruption
 - [x] Combined multi-fault scenarios (one campaign, more can be added as YAML)
-- [ ] Campaigns for duplicate / reorder once the guardian detects them (Guardian section)
+- [x] Campaigns for duplicate / reorder and a sensor spike (`transport_duplicate`, `transport_reorder`, `sensor_spike_cell2`)
 
 #### 3. Guardian
 - [x] Publish fault events over uProtocol (`up://rom-vehicle/1002/1/8003` → DFM, Python ↔ Rust `up-transport-zenoh`)
@@ -338,7 +338,7 @@ flowchart LR
 - [x] Publish state and mitigation over uProtocol (`up://rom-vehicle/1002/1/8006`, on every change and every second)
 - [ ] The guardian's own outgoing heartbeat over uProtocol
 - [x] AZ3166 liveness heartbeat without a re-flash: the adapter turns the board's telemetry (1.5 s timeout) and its MQTT Last Will (`offline`) into the `chip` heartbeat; the guardian supervises it (`chip silent` → `SENSOR_FAULT`, DTC `chip_silent`, required in `make hw`), and the board watches the guardian back (`G:NO LINK` after 5 s)
-- [ ] Detect duplicate / reordered messages and implausible rate of change
+- [x] Detect duplicate / reordered messages (dropped, `link_integrity`) and implausible rate of change (`cellN.rate_implausible`, the reading is kept)
 - [x] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event: sender (`published`), transport faults (`transport_fault`), guardian, DFM (`fault_msg_id`), OpenSOVD environment data, evidence record
 
 #### 4. Diagnostics

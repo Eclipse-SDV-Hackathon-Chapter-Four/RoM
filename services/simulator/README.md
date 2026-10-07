@@ -85,6 +85,13 @@ CRITICAL → MITIGATING → MONITORING a few times and never reaches `mitigation
 (`tests/test_cooling.py` runs this closed loop against the real guardian logic). Set `SIM_COOLING_C_PER_S=0.5` to see
 mitigation fail.
 
+## Thermal inertia
+
+A cell changes at most `SIM_MAX_SLEW_C_PER_S` (default 5 °C/s, `0` = off), so a new run (`POST /run` resets the
+wave), a cooling reset or a cleared drift ramps instead of jumping; the guardian would rightly raise
+`cellN.rate_implausible` (> 10 °C/s) for such a step. Sensor faults (`spike`, `out_of_range`, `stuck`) model the
+sensor, not the pack, and bypass the limit: a spike is still a step.
+
 ## Log events
 
 `campaign_start`, `sample` (`temp_c` = Max or null, `cells`, `stalled`, `heartbeats`, `cooling_c`), `run_started`,

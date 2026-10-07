@@ -35,6 +35,7 @@ class Thresholds:
     max_plausible_c: float
     imbalance_c: float      # hottest - coldest valid cell above this ...
     imbalance_s: float      # ... for this long -> cell_imbalance
+    max_rate_c_per_s: float # a cell changing faster than this -> rate_implausible (the reading is kept)
 
 
 def thresholds() -> Thresholds:
@@ -49,6 +50,7 @@ def thresholds() -> Thresholds:
         max_plausible_c=float(_env("MAX_PLAUSIBLE_C", "150")),
         imbalance_c=float(_env("IMBALANCE_C", "10")),
         imbalance_s=float(_env("IMBALANCE_S", "2")),
+        max_rate_c_per_s=float(_env("MAX_RATE_C_PER_S", "10")),
     )
 
 

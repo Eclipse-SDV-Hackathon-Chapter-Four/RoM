@@ -420,3 +420,59 @@ def test_when_the_link_comes_back_the_other_components_are_not_blamed_while_thei
     beat(g, 7.0, COMPONENT_UPROTOCOL)   # the link beat after the databroker's deadline (6.9 s): it is alive
     g.update(7.0, healthy(7.0))                                       # databroker really went silent afterwards
     assert g.lost[0] == COMPONENT_DATABROKER
+
+
+# --- signal integrity: duplicated / reordered messages, implausible rate of change ------------------------------
+RATE = contracts.cell_fault(2, "rate_implausible")
+
+
+def test_duplicated_and_reordered_messages_are_discarded_and_three_raise_link_integrity():
+    g = Guardian()
+    assert [g.check_seq(0, s) for s in (1, 2, 2, 4, 3, 5)] == [None, None, "duplicate", None, "reordered", None]
+    g.update(0.5, healthy(0.5))
+    assert contracts.FAULT_LINK_INTEGRITY not in g.faults                  # 2 anomalies, not enough
+    g.check_seq(1, 5)
+    g.update(1, healthy(1))
+    assert g.faults[contracts.FAULT_LINK_INTEGRITY] is None and g.state == MONITORING
+    g.update(6.5, healthy(6.5))
+    assert contracts.FAULT_LINK_INTEGRITY not in g.faults                  # quiet for LINK_WINDOW_S: cleared
+
+
+def test_a_publisher_restart_is_not_a_reordered_message():
+    g = Guardian()
+    g.check_seq(0, 500)
+    assert g.check_seq(1, 1) is None and g.last_seq == 1
+
+
+def test_a_spike_raises_rate_implausible_for_that_cell_and_clears_after_the_hold_time():
+    g = Guardian()
+    run(g, healthy, 5)
+    g.update(5.5, {**healthy(5.5), 2: 14.0})                               # -15 °C in one sample
+    assert g.faults[RATE] == 2 and g.state == MONITORING
+    g.update(6.0, healthy(6.0))
+    assert RATE in g.faults
+    g.update(8.5, healthy(8.5))
+    assert RATE not in g.faults
+
+
+def test_a_hot_jump_is_flagged_but_never_discarded():
+    g = Guardian()
+    run(g, healthy, 5)
+    state, _ = g.update(5.5, {**healthy(5.5), 2: 50.0})
+    assert contracts.cell_fault(2, "rate_implausible") in g.faults and g.temp == 50.0 and state == CRITICAL
+
+
+def test_slow_drift_a_frozen_sensor_catching_up_and_out_of_range_are_not_a_rate_fault():
+    g = Guardian()
+    run(g, lambda t: {**healthy(t), 1: 30 + 0.7 * t}, 10)                   # thermal-runaway drift
+    run(g, lambda t: {**healthy(t), 3: 29.0 if t < 8 else 34.0}, 8.5)      # stuck 8 s, then 5 °C in one sample
+    g.update(9.0, {**healthy(9.0), 1: 200.0})
+    g.update(9.5, healthy(9.5))
+    assert not [c for c in g.faults if c.endswith("rate_implausible")]
+
+
+def test_loop_drops_a_duplicate_before_it_reaches_the_state_machine():
+    events, _, _ = run_loop(cells_msg(1, c1=30.0, c2=29.0, c3=28.5, c4=28.8),
+                            cells_msg(1, c1=60.0, c2=29.0, c3=28.5, c4=28.8))
+    dup = [e for e in events if e["event"] == "seq_duplicate"]
+    assert dup and dup[0]["msg_id"] == "cells1" and not [e for e in events if e.get("to") == "CRITICAL"]

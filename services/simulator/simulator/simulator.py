@@ -17,8 +17,12 @@ stuck, spiked, drifted or out of range, and the source can drop cells or stall (
 With SIM_COOLING=1 it is also the cooling actuator: while the guardian is MITIGATING (its state over uProtocol) the
 simulated cells cool down, see cooling.py.
 
+The pack has thermal inertia: a cell changes at most SIM_MAX_SLEW_C_PER_S (5 °C/s), so a new run, a cooling reset or
+a cleared drift never jumps (the guardian would rightly call that an implausible rate). Sensor faults (spike,
+out_of_range, stuck) model the sensor, not the pack, and bypass it.
+
 Env defaults: SIM_HZ, SIM_PERIOD_S, SIM_MIN_C, SIM_MAX_C, SIM_DURATION_S, SIM_SEED, SIM_CELLS, SIM_API_HOST, SIM_API_PORT,
-SIM_COOLING, SIM_COOLING_C_PER_S, SIM_COOLING_RELAX_C_PER_S (plus KUKSA_HOST/KUKSA_PORT, UP_*/ZENOH_*).
+SIM_COOLING, SIM_COOLING_C_PER_S, SIM_COOLING_RELAX_C_PER_S, SIM_MAX_SLEW_C_PER_S (plus KUKSA_HOST/KUKSA_PORT, UP_*/ZENOH_*).
 """
 import argparse
 import os
@@ -78,13 +82,15 @@ def run(sink: Callable[[Dict[str, float]], None], log, hz: float = 2.0, period_s
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
         faults: Optional[FaultState] = None, session: Optional[Session] = None,
-        cells: Sequence[int] = ALL_CELLS, cooling: Optional[Cooling] = None) -> int:
+        cells: Sequence[int] = ALL_CELLS, cooling: Optional[Cooling] = None,
+        max_slew_c_per_s: Optional[float] = None) -> int:
     """Send samples at `hz` until duration_s elapses (0 = forever). Returns the tick count.
 
     sink gets {vss_path: value} for the simulated cells that are reported, for Max (only if all four cells are
     simulated) and for the heartbeats. Without data (everything dropped out, or the source is stalled) only the
     heartbeats go out: the process is alive, the data is not. Ticks keep their schedule during faults.
     cooling (optional) lowers every simulated cell before the faults are applied.
+    max_slew_c_per_s (optional) limits how fast a cell without a sensor fault may change (thermal inertia).
     """
     cells = tuple(sorted(set(cells)))
     faults = faults if faults is not None else FaultState(monotonic)
@@ -95,6 +101,7 @@ def run(sink: Callable[[Dict[str, float]], None], log, hz: float = 2.0, period_s
     total = int(duration_s * hz) if duration_s > 0 else None
     offsets = cell_offsets(session.seed, len(VSS_CELL_TEMPS))
     start, i, wave_t, beat = monotonic(), 0, 0.0, 0
+    pack: Dict[int, float] = {}   # last value per cell without a sensor fault: what the slew limit follows
     try:
         while total is None or i < total:
             new_run = session.take_restart()
@@ -113,6 +120,15 @@ def run(sink: Callable[[Dict[str, float]], None], log, hz: float = 2.0, period_s
                 wave = {c: round(t + cooled, 2)
                         for c, t in zip(ALL_CELLS, cell_temps(wave_t, offsets, period_s, min_c, max_c))}
                 reported = {c: v for c, v in faults.apply({c: wave[c] for c in cells}).items() if v is not None}
+                if max_slew_c_per_s:
+                    step = max_slew_c_per_s / hz
+                    sensor = {c for f in faults.active() if f.type in SENSOR_FAULTS for c in (f.cells or cells)}
+                    for c, v in list(reported.items()):
+                        if c in sensor:
+                            continue
+                        if c in pack:
+                            reported[c] = round(min(max(v, pack[c] - step), pack[c] + step), 2)
+                        pack[c] = reported[c]
                 wave_t += 1 / hz
             hottest = max(reported.values()) if reported else None
             values = {VSS_CELL_TEMPS[c - 1]: v for c, v in reported.items()}
@@ -140,6 +156,9 @@ def run(sink: Callable[[Dict[str, float]], None], log, hz: float = 2.0, period_s
     return i
 
 
+SENSOR_FAULTS = ("spike", "out_of_range", "stuck")
+
+
 def _env(name: str, default: float) -> float:
     return float(os.environ.get(name, default))
 
@@ -159,6 +178,8 @@ def main(argv: Optional[list] = None) -> None:
     p.add_argument("--cooling", action="store_true",
                    default=os.environ.get("SIM_COOLING", "").lower() in ("1", "true", "yes"),
                    help="cool the cells while the guardian is MITIGATING (guardian state over uProtocol)")
+    p.add_argument("--max-slew", type=float, default=_env("SIM_MAX_SLEW_C_PER_S", 5),
+                   help="°C/s a cell may change without a sensor fault (thermal inertia), 0 = off")
     a = p.parse_args(argv)
     if a.hz <= 0 or a.period <= 0 or a.min_c >= a.max_c:
         p.error("need hz > 0, period > 0 and min < max")
@@ -186,7 +207,7 @@ def main(argv: Optional[list] = None) -> None:
     client = kuksa.open_client()
     try:
         run(lambda values: kuksa.set_values(client, values), log, a.hz, a.period, a.min_c, a.max_c, a.duration,
-            faults=faults, session=session, cells=cells, cooling=cooling)
+            faults=faults, session=session, cells=cells, cooling=cooling, max_slew_c_per_s=a.max_slew or None)
     finally:
         client.disconnect()
         if transport is not None:
