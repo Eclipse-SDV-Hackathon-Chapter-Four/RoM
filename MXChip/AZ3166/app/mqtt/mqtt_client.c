@@ -16,6 +16,7 @@
 #include "nx_api.h"
 #include "telemetry.h"
 #include "wwd_networking.h"
+#include "wiced_sdk.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -156,6 +157,27 @@ static VOID client_notify_func(NXD_MQTT_CLIENT *client_ptr, UINT number_of_messa
 
 static ULONG error_count;
 
+/* Observation only: logs Wi-Fi link and IP changes, never acts on them. wwd_wifi_is_ready_to_transceive()
+ * is the same WICED call wwd_network_connect() already uses; called once per loop pass of the MQTT thread,
+ * and it prints only when the state changes. */
+static void log_wifi_link_change(NX_IP *ip_ptr){
+    static int last_up = -1;
+    static ULONG last_ip = 0xFFFFFFFF;
+    ULONG ip_address = 0, network_mask = 0;
+    wwd_result_t link = wwd_wifi_is_ready_to_transceive(WWD_STA_INTERFACE);
+    int up = (link == WWD_SUCCESS);
+
+    nx_ip_address_get(ip_ptr, &ip_address, &network_mask);
+    if (up != last_up || ip_address != last_ip){
+        printf("[wifi t=%lus] link %s (wwd 0x%x), ip %u.%u.%u.%u\r\n",
+               (unsigned long)(tx_time_get() / TX_TIMER_TICKS_PER_SECOND), up ? "UP" : "DOWN", (unsigned)link,
+               (unsigned)(ip_address >> 24), (unsigned)((ip_address >> 16) & 0xFF),
+               (unsigned)((ip_address >> 8) & 0xFF), (unsigned)(ip_address & 0xFF));
+        last_up = up;
+        last_ip = ip_address;
+    }
+}
+
 /* Opens one MQTT session: Last Will, connect, "online" status, subscriptions.
  * Returns NXD_MQTT_SUCCESS only if everything is in place; on failure no session is left open. */
 static UINT mqtt_open_session(NXD_ADDRESS *server_ip){
@@ -252,6 +274,7 @@ static void mqtt_thread_work(NX_IP *ip_ptr, NX_PACKET_POOL *pool_ptr){
     server_ip.nxd_ip_address.v4 = MQTT_LOCAL_BROKER_IP;
 
     while (1){
+        log_wifi_link_change(ip_ptr);
         if (!connected){
             if (server_ip.nxd_ip_address.v4 == 0){
                 printf("MQTT_LOCAL_BROKER_IP is not set: define it in cloud_config_local.h.\r\n");
