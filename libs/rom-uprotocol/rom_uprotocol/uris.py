@@ -43,6 +43,13 @@ def guardian_fault_topic(authority: Optional[str] = None) -> UUri:
                 resource_id=contract.UP_RESOURCE_GUARDIAN_FAULT)
 
 
+def heartbeat_topic(authority: Optional[str] = None) -> UUri:
+    """Topic of the heartbeats: up://<authority>/1001/1/8004."""
+    return UUri(authority_name=_authority(authority), ue_id=contract.UP_VSS_PUBLISHER_UE_ID,
+                ue_version_major=contract.UP_VSS_PUBLISHER_UE_VERSION,
+                resource_id=contract.UP_RESOURCE_HEARTBEAT)
+
+
 def monitor_uri(authority: Optional[str] = None) -> UUri:
     """uEntity of the rom-up-monitor tool (a listener only, never published as a source)."""
     return UUri(authority_name=_authority(authority), ue_id=contract.UP_MONITOR_UE_ID, ue_version_major=1)

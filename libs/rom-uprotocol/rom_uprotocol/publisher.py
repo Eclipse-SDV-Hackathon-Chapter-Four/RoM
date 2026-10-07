@@ -25,8 +25,9 @@ from uprotocol.v1.uri_pb2 import UUri
 from uprotocol.v1.ustatus_pb2 import UStatus
 
 from rom_common import clock
+from rom_common.contracts import HB_OK
 
-from .contract import build_cells_msg, build_signal_msg
+from .contract import build_cells_msg, build_heartbeat_msg, build_signal_msg
 
 Send = Callable[[UMessage], UStatus]
 Interceptor = Callable[[UMessage, Send], UStatus]
@@ -91,3 +92,39 @@ class SignalPublisher:
         if self._log is not None:
             self._log.log(event, **fields)
 
+
+
+class HeartbeatPublisher:
+    """publish(component, status) -> UStatus on the heartbeat topic, through the same interceptor chain.
+
+    Quiet on success (a heartbeat every 500 ms would drown the log), logs heartbeat_failed. seq counts per component.
+    """
+
+    def __init__(self, send: Send, topic: UUri, ttl_ms: int, log=None, interceptors: Sequence[Interceptor] = ()):
+        self._send = _chain(send, interceptors)
+        self._topic = topic
+        self._ttl_ms = ttl_ms
+        self._log = log
+        self._seqs = {}
+        self.published = 0
+        self.failed = 0
+
+    def build(self, component: str, status: str = HB_OK) -> UMessage:
+        seq = self._seqs[component] = self._seqs.get(component, 0) + 1
+        payload = build_heartbeat_msg(component, status, seq, clock.now_ms())
+        return (UMessageBuilder.publish(self._topic)
+                .with_ttl(self._ttl_ms)
+                .build_from_upayload(UPayload.pack_from_data_and_format(
+                    payload, UPayloadFormat.UPAYLOAD_FORMAT_JSON)))
+
+    def publish(self, component: str, status: str = HB_OK) -> UStatus:
+        message = self.build(component, status)
+        result = self._send(message)
+        if result.code != UCode.OK:
+            self.failed += 1
+            if self._log is not None:
+                self._log.log("heartbeat_failed", component=component, code=UCode.Name(result.code),
+                              error=result.message)
+        else:
+            self.published += 1
+        return result

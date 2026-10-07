@@ -10,6 +10,10 @@ Fault types (applied per message, in this order when several are active):
     reorder     hold one message and send it after the next one (pairs swap places)
     duplicate   send params.copies extra copies (default 1)
     delay       send params.ms later, from a timer thread (a delay beyond the TTL arrives expired)
+    databroker_down  not a message fault: the client's databroker probe reports "down" while it is active
+
+Every fault takes params.topic: "all" (default), "signal" or "heartbeat", so heartbeats can be lost while the data
+keeps flowing, and the other way round.
 
 A message that is dropped, held or delayed still returns OK to the publisher: the sender cannot tell.
 A held message with nobody behind it stays held until the next message or until `reorder` is cleared.
@@ -25,7 +29,18 @@ from uprotocol.v1.ucode_pb2 import UCode
 from uprotocol.v1.umessage_pb2 import UMessage
 from uprotocol.v1.ustatus_pb2 import UStatus
 
+from .contract import UP_RESOURCE_HEARTBEAT
+
 TRANSPORT_FAULTS = ("drop", "reorder", "duplicate", "delay")
+PROBE_FAULTS = ("databroker_down",)   # no effect on messages: the client's databroker probe reads them (see active())
+TOPICS = ("all", "signal", "heartbeat")
+SIGNAL, HEARTBEAT = "signal", "heartbeat"
+
+
+def _kind(message) -> str:
+    """Which stream a message belongs to, from its source topic (anything unknown counts as signal)."""
+    resource = getattr(getattr(getattr(message, "attributes", None), "source", None), "resource_id", None)
+    return HEARTBEAT if resource == UP_RESOURCE_HEARTBEAT else SIGNAL
 
 
 class FaultError(ValueError):
@@ -68,16 +83,18 @@ class TransportFaults:
         self._ids = itertools.count(1)
         self._faults: Dict[int, TransportFault] = {}
         self._rng = random.Random(seed)
-        self._held: Optional[UMessage] = None  # waiting for the next message
+        self._held: Dict[str, UMessage] = {}  # reorder: one held message per stream, waiting for the next one
         self.counts = {"seen": 0, "dropped": 0, "reordered": 0, "duplicated": 0, "delayed": 0}
 
     # --- control ---------------------------------------------------------------------------------------------
     def add(self, type_: str, params: Optional[dict] = None, duration_s=None) -> TransportFault:
-        if type_ not in TRANSPORT_FAULTS:
-            raise FaultError(f"unknown fault type {type_!r}, use one of {', '.join(TRANSPORT_FAULTS)}")
+        if type_ not in TRANSPORT_FAULTS + PROBE_FAULTS:
+            raise FaultError(f"unknown fault type {type_!r}, use one of {', '.join(TRANSPORT_FAULTS + PROBE_FAULTS)}")
         if params is not None and not isinstance(params, dict):
             raise FaultError("params must be an object")
         params = dict(params or {})
+        if params.setdefault("topic", "all") not in TOPICS:
+            raise FaultError(f"params.topic must be one of {', '.join(TOPICS)}")
         if type_ == "drop":
             params["probability"] = _number(params, "probability", 1.0, 0.0, 1.0)
         elif type_ == "duplicate":
@@ -103,8 +120,12 @@ class TransportFaults:
             return removed
 
     def active(self) -> List[TransportFault]:
+        self.expire()
         with self._lock:
             return list(self._faults.values())
+
+    def is_active(self, type_: str) -> bool:
+        return any(f.type == type_ for f in self.active())
 
     def expire(self) -> List[TransportFault]:
         """Drop faults whose duration has passed and return them (the caller logs fault_cleared)."""
@@ -118,7 +139,7 @@ class TransportFaults:
     def reset(self, seed: int) -> None:
         """New run: no faults, fresh RNG, zeroed counters."""
         with self._lock:
-            self._faults, self._held = {}, None
+            self._faults, self._held = {}, {}
             self._rng = random.Random(seed)
             self.counts = dict.fromkeys(self.counts, 0)
 
@@ -132,21 +153,25 @@ class TransportFaults:
     def _plan(self, message: UMessage) -> List[tuple]:
         """What to send now, as (message, delay_s). Called with the lock held; sends nothing itself."""
         out: List[tuple] = []
-        kinds = {f.type: f for f in self._faults.values()}
+        kind = _kind(message)
+        kinds = {f.type: f for f in self._faults.values() if f.params["topic"] in ("all", kind)}
         self.counts["seen"] += 1
-        if self._held is not None and "reorder" not in kinds:   # reorder was cleared: release what it was holding
-            out.append((self._held, 0.0))
-            self._held = None
+        held = self._held.pop(kind, None)
+        if held is not None and "reorder" not in kinds:   # reorder was cleared: release what it was holding
+            out.append((held, 0.0))
+            held = None
         if "drop" in kinds and self._rng.random() < kinds["drop"].params["probability"]:
             self.counts["dropped"] += 1
+            if held is not None:
+                self._held[kind] = held
             return out
         msgs = [message]
         if "reorder" in kinds:
-            if self._held is None:
-                self._held = message
+            if held is None:
+                self._held[kind] = message
                 self.counts["reordered"] += 1
                 return out
-            msgs, self._held = [message, self._held], None
+            msgs = [message, held]
         if "duplicate" in kinds:
             extra = kinds["duplicate"].params["copies"]
             msgs = [m for m in msgs for _ in range(1 + extra)]

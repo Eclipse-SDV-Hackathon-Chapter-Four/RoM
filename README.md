@@ -42,7 +42,7 @@ make down                        # stop everything
 | `make up` | start databroker + mosquitto in the background |
 | `make guardian` | databroker + simulator + vss-uprotocol-client + guardian, follow guardian logs |
 | `make images` | build all service images `localhost/rom/<service>:dev` |
-| `make hw` | hardware run: AZ3166 → mosquitto → adapter → databroker → vss-uprotocol-client → guardian (no simulator), follow adapter + guardian logs |
+| `make hw` | hardware run: AZ3166 (= cell 1) → mosquitto → adapter → databroker → vss-uprotocol-client → guardian; the simulator fills cells 2-4 (`SIM_CELLS=2,3,4`); the guardian also expects the `adapter` and `chip` heartbeats. Follows adapter + guardian logs |
 | `make adapter` | MQTT → KUKSA adapter in the foreground |
 | `make sovd` | DFM + Eclipse OpenSOVD server in the background (SOVD REST on `localhost:7690/sovd`) |
 | `make sovd-faults` | guardian faults from the DFM over SOVD |
@@ -82,12 +82,17 @@ pytest -q
 | `WARN_C`, `CRIT_C` | `38`, `45` | guardian |
 | `STALE_MS`, `STUCK_S`, `MIN_PLAUSIBLE_C`, `MAX_PLAUSIBLE_C` | `2000`, `10`, `-40`, `150` | guardian (`STALE_MS` is also the uProtocol TTL) |
 | `VSS_SOURCE_PATH` | `Vehicle.Powertrain.TractionBattery.Temperature.Max` | vss-uprotocol-client |
+| `SIM_CELLS` | `1,2,3,4` | simulator (`2,3,4` when the real board is cell 1) |
+| `ADAPTER_CELL` | `1` | adapter: which cell the board is |
+| `HEARTBEAT_PERIOD_MS`, `HEARTBEAT_STALE_MS` | `500`, `1500` | client, adapter, simulator / guardian |
+| `CHIP_TIMEOUT_MS` | `1500` | adapter: no telemetry for this long reports the chip heartbeat as 0 |
+| `REQUIRED_HEARTBEATS` | `uprotocol,databroker` | guardian (`make hw`: `+adapter,chip`) |
 | `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_MODE`, `ZENOH_CONNECT`, `ZENOH_LISTEN` | `rom-vehicle`, `zenoh`, `peer`, –, – | vss-uprotocol-client, guardian |
 
 ## Fault injection
 
 The simulator writes **four battery cells** (`Vehicle.Powertrain.TractionBattery.Cells.Cell1..4.Temperature`, a custom
-overlay in [`infra/vss/rom_cells.json`](infra/vss/rom_cells.json) that the databroker loads next to the standard VSS)
+overlay in [`infra/vss/rom_overlay.json`](infra/vss/rom_overlay.json) that the databroker loads next to the standard VSS)
 and `Temperature.Max` = the hottest cell written. The guardian watches **every cell** (uProtocol `…/1001/1/8002`)
 and reports DFM faults per cell on `…/1002/1/8003`; see [`docs/diagnostics-4-cells.md`](docs/diagnostics-4-cells.md).
 
@@ -110,11 +115,39 @@ curl -XDELETE localhost:8080/faults
 The control APIs have **no authentication**; compose publishes them on `127.0.0.1` only. Do not expose them on a
 shared network.
 
+## Heartbeats: which part of the chain broke
+
+```
+board --MQTT--> adapter ----(Cell1 + Max, Heartbeat.Adapter, Heartbeat.Chip)--+
+simulator ------(Cells, Max, Heartbeat.Simulator, Heartbeat.Chip)-------------+--> KUKSA
+                                                                                  |
+  vss-uprotocol-client: cells (8002), Max (8001); heartbeats (8004): the producers' counters, plus its own
+  "uprotocol" beat and "databroker" ok/down from a probe of KUKSA               |
+                                                                                  v
+                                                              guardian (uProtocol only) --> display over MQTT
+```
+
+| Heartbeat | From | Guardian says when it is gone | DFM code (`battery_guardian.…`) |
+|---|---|---|---|
+| `uprotocol` | vss-uprotocol-client | `uP link lost` | `uprotocol_lost` |
+| `databroker` | the client's probe of KUKSA | `KUKSA down` | `databroker_down` |
+| `adapter` / `simulator` | the producer | `adapter down` / `sim down` | `adapter_down` / `simulator_down` |
+| `chip` | the adapter: a counter while the board's telemetry arrives, `0` when it stops (or the simulator) | `chip silent` | `chip_silent` |
+
+All of these are `SENSOR_FAULT` with a short reason (the display contract and the firmware are unchanged). When several are
+gone the one closest to the guardian is blamed first (uprotocol > databroker > producer > chip) and gets the only new DFM
+code. Details: [`services/guardian`](services/guardian/README.md), [`services/adapter`](services/adapter/README.md).
+
+**Real board:** the AZ3166 is **cell 1** (`ADAPTER_CELL`). `make hw` runs the simulator for cells 2-4, so the pack still
+has four cells. No firmware change was needed: the adapter derives the chip heartbeat from the board's telemetry and its
+`rom/sensor/battery/status` (Last Will). A heartbeat from the firmware itself is a possible follow-up.
+
 ## Guardian states
 
 `CLEAR` (no data yet) → `MONITORING` → `WARNING` (≥ `WARN_C`) → `CRITICAL` (≥ `CRIT_C`) → `MITIGATING`
-(→ `CRITICAL` "mitigation failed" if still hot after 5 s). `SENSOR_FAULT` if the signal is stale (2 s),
-stuck (10 s) or out of range (−40…150 °C).
+(→ `CRITICAL` "mitigation failed" if still hot after 5 s). Every cell is checked on its own (stale 2 s, stuck 10 s, out of
+range −40…150 °C); a bad cell raises its own DFM code and is left out, so a faulty sensor never disarms the warning.
+`SENSOR_FAULT` when no cell can be trusted, or when a heartbeat is lost (see above).
 
 ## AZ3166 hardware node: sensor telemetry over MQTT
 
@@ -284,7 +317,9 @@ flowchart LR
 - [ ] Campaigns for duplicate / reorder once the guardian detects them (Guardian section)
 
 #### 3. Guardian
-- [ ] Publish state, heartbeat, fault and mitigation events over uProtocol
+- [x] Heartbeats from the uProtocol link, the KUKSA databroker, the adapter / simulator and the physical chip; the guardian names the failing component (DFM code for the root cause)
+- [ ] Publish state, heartbeat, fault and mitigation events over uProtocol (the guardian's own outgoing heartbeat)
+- [ ] Firmware heartbeat from the AZ3166 itself (independent of the sensor read; needs a re-flash)
 - [ ] Detect duplicate / reordered messages and implausible rate of change
 - [ ] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event
 

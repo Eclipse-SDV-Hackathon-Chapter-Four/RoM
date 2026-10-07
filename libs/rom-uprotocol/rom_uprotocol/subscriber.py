@@ -8,8 +8,9 @@
     UpSignalSource   battery temperature Max   up://…/1001/1/8001   -> Sample
     UpCellsSource    cell temperatures         up://…/1001/1/8002   -> CellsSample   (guardian input)
     UpFaultSource    guardian fault events     up://…/1002/1/8003   -> FaultEvent    (DFM reporter input)
+    UpHeartbeatSource heartbeats               up://…/1001/1/8004   -> HeartbeatSample (guardian input)
 
-Watch a topic from a terminal:  rom-up-monitor [--cells | --faults]
+Watch a topic from a terminal:  rom-up-monitor [--cells | --faults | --heartbeats]
 """
 import argparse
 import signal
@@ -51,6 +52,16 @@ class CellsSample:
     source_ts_ms: int
     rx_ts_ms: int
     run_id: Optional[str]     # campaign run the publisher was told about, or None
+    msg_id: str
+
+
+@dataclass(frozen=True)
+class HeartbeatSample:
+    component: str
+    status: str         # HB_OK or HB_DOWN
+    seq: int
+    ts_ms: int          # publisher send time (epoch ms)
+    rx_ts_ms: int       # when this process received it
     msg_id: str
 
 
@@ -124,12 +135,23 @@ class UpFaultSource(_JsonSource):
         return contract.parse_fault_event(payload)
 
 
+class UpHeartbeatSource(_JsonSource):
+    """Heartbeats (up://…/1001/1/8004) -> on_sample(HeartbeatSample). uprotocol and databroker beat here."""
+    default_topic = staticmethod(uris.heartbeat_topic)
+
+    def _convert(self, payload, rx_ts_ms, msg_id) -> HeartbeatSample:
+        msg = contract.parse_heartbeat_msg(payload)
+        return HeartbeatSample(component=msg.component, status=msg.status, seq=msg.seq, ts_ms=msg.ts_ms,
+                               rx_ts_ms=rx_ts_ms, msg_id=msg_id)
+
+
 def main(argv: Optional[list] = None):
     """rom-up-monitor [--cells | --faults]: print every message of one RoM topic as a JSON line."""
     parser = argparse.ArgumentParser(description="Print RoM uProtocol messages as JSON lines.")
     which = parser.add_mutually_exclusive_group()
     which.add_argument("--cells", action="store_true", help="cell temperatures, up://…/1001/1/8002")
     which.add_argument("--faults", action="store_true", help="guardian fault events, up://…/1002/1/8003")
+    which.add_argument("--heartbeats", action="store_true", help="heartbeats, up://…/1001/1/8004")
     args = parser.parse_args(argv)
     log = jsonlog.get_logger("up_subscriber")
     last_seq = {"seq": None}
@@ -152,8 +174,20 @@ def main(argv: Optional[list] = None):
     def on_fault(e: contract.FaultEvent):
         log.log("fault_event", **asdict(e))
 
+    last_beat = {}
+
+    def on_heartbeat(h: HeartbeatSample):
+        prev, last_beat[h.component] = last_beat.get(h.component), h.seq
+        if prev is not None and h.seq != prev + 1:
+            log.log("seq_gap" if h.seq > prev + 1 else "seq_backwards", component=h.component, expected=prev + 1,
+                    got=h.seq)
+        log.log("heartbeat", component=h.component, status=h.status, seq=h.seq, msg_id=h.msg_id,
+                latency_ms=h.rx_ts_ms - h.ts_ms)
+
     if args.faults:
         source_cls, handler = UpFaultSource, on_fault
+    elif args.heartbeats:
+        source_cls, handler = UpHeartbeatSource, on_heartbeat
     elif args.cells:
         source_cls, handler = UpCellsSource, on_cells
     else:

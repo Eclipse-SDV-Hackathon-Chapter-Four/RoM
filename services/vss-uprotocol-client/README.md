@@ -20,6 +20,7 @@ Transport faults (fault API) apply to the cell topic, the one the guardian reads
 |---|---|
 | `vss_uprotocol_client/sources.py` | `SignalSource` protocol, `KuksaSource` (subscribe, reconnect with backoff), `coalesce()` |
 | `vss_uprotocol_client/__main__.py` | wires `KuksaSource` → `rom_uprotocol.SignalPublisher`; SIGTERM-safe |
+| `vss_uprotocol_client/heartbeat.py` | `DatabrokerProbe` + the `uprotocol` / `databroker` heartbeat threads |
 | `vss_uprotocol_client/fault_api.py` | optional HTTP API for transport faults (below) |
 
 A new source (CAN replay, another databroker, a recorded log) is a new `SignalSource` class;
@@ -43,8 +44,19 @@ vss-uprotocol-client                            # from the dev venv (make venv)
 | `VSS_SOURCE_PATH` | `Vehicle.Powertrain.TractionBattery.Temperature.Max` | VSS signal forwarded on the Max topic (cells: `rom_common.contracts.VSS_CELL_TEMPS`) |
 | `COALESCE_MS` | `50` | notifications closer than this belong to one source write |
 | `STALE_MS` | `2000` | uProtocol message TTL |
+| `HEARTBEAT_PERIOD_MS` / `HEARTBEAT_STALE_MS` | `500` / `1500` | own heartbeat period; the TTL of a heartbeat |
 | `FAULT_API_PORT` / `FAULT_API_HOST` | unset (off) / `127.0.0.1` | transport-fault API; unset = no interceptor installed, behaviour unchanged |
 | `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_*` | see rom-uprotocol | transport |
+
+## Heartbeats
+
+On `up://<UP_AUTHORITY>/1001/1/8004`:
+
+| `component` | `status` | From |
+|---|---|---|
+| `uprotocol` | `ok` | this process, every `HEARTBEAT_PERIOD_MS`, for as long as it runs. If it stops, the client or Zenoh is dead. |
+| `databroker` | `ok` / `down` | a probe of KUKSA (`get_server_info()`) in its own thread. A dead databroker is reported as `down` (the client keeps beating); a hanging probe goes silent, which the guardian treats the same. |
+| `chip` / `adapter` / `simulator` | `ok` / `down` | the producers' KUKSA counters `Vehicle.RoM.Heartbeat.Chip / .Adapter / .Simulator`, forwarded as they are written; a counter of `0` is `down` (the adapter writes it for a board that stopped sending telemetry). |
 
 ## Transport faults (fault injection)
 
@@ -65,12 +77,16 @@ uses it; you can also use `curl`. JSON, **no authentication**: keep it off share
 | `reorder` | holds one message and sends it after the next (pairs swap) | – |
 | `duplicate` | sends extra copies | `copies` (default 1) |
 | `delay` | sends later, from a timer thread; beyond the TTL it arrives expired | `ms` (required) |
+| `databroker_down` | not a message fault: the databroker probe reports `down` while it is active (simulated outage) | – |
+
+Every transport fault takes `params.topic`: `all` (default: cells and heartbeats), `signal` (cells only) or `heartbeat`
+(heartbeats only), to lose or delay just the data or just the heartbeats.
 
 The publisher numbers every message before the interceptor, so a drop shows up downstream as a `seq` gap.
 
 ## Log events
 
-`started`, `kuksa_connected`, `kuksa_disconnected`, `published` (`seq`, `value`, counters), `publish_failed`, `stopped`;
+`started`, `kuksa_connected`, `kuksa_disconnected`, `published` (`seq`, `value`, counters), `publish_failed`, `heartbeat_failed`, `databroker_up` / `databroker_down` (changes only), `stopped`;
 with the fault API: `fault_api_started`, `run_started`, `fault_injected`, `fault_cleared`.
 
 ## Test

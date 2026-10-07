@@ -1,0 +1,12 @@
+# Made with Claude (Claude Code, Anthropic)
+# The simulator's own heartbeat stops (stands in for a dead adapter in hardware mode).
+run_id: producer-heartbeat-loss-01
+seed: 7
+hazard: "H9: the signal producer process is dead"
+safety_goal: "SG6: name a dead producer within 3 s"
+expected_state: SENSOR_FAULT      # reason: "sim down" (the adapter says "adapter down")
+expected_faults: [battery_guardian.simulator_down]
+max_detect_ms: 3000
+baseline: {min_c: 25, max_c: 32, period_s: 120}
+faults:
+  - {at_s: 10, duration_s: 8, target: simulator, type: heartbeat_loss, params: {component: simulator}}

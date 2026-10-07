@@ -28,9 +28,10 @@ from rom_common.contracts import FAULT_CODES, STATES
 CAMPAIGN_DIR = Path(__file__).parent / "campaigns"
 EXPECTED_STATES = STATES + ("MITIGATING",)  # the guardian's internal state; the display shows it as CRITICAL
 FAULT_TYPES = {
-    "simulator": ("stuck", "spike", "drift", "out_of_range", "dropout", "replay_interruption"),
-    "publisher": ("drop", "reorder", "duplicate", "delay"),
+    "simulator": ("stuck", "spike", "drift", "out_of_range", "dropout", "replay_interruption", "heartbeat_loss"),
+    "publisher": ("drop", "reorder", "duplicate", "delay", "databroker_down"),
 }
+NO_CELL_TYPES = ("replay_interruption", "heartbeat_loss")   # whole-source simulator faults
 DEFAULT_SETTLE_S = 10.0
 
 
@@ -130,6 +131,8 @@ def _fault(index: int, raw) -> FaultStep:
     cells = raw.get("cells", [raw["cell"]] if "cell" in raw else [])
     if target == "publisher" and cells:
         raise CampaignError(f"{where}: transport faults hit the whole stream, they take no cell")
+    if raw["type"] in NO_CELL_TYPES and cells:
+        raise CampaignError(f"{where}: {raw['type']} affects the whole source, it takes no cell")
     if not isinstance(cells, list) or not all(isinstance(c, int) and not isinstance(c, bool) and 1 <= c <= 4 for c in cells):
         raise CampaignError(f"{where}.cell(s) must be cell numbers between 1 and 4")
     params = raw.get("params", {})
