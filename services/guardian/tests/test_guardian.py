@@ -322,14 +322,28 @@ def beat_msg(component, status=HB_OK, seq=1):
     return HeartbeatSample(component=component, status=status, seq=seq, ts_ms=1, rx_ts_ms=1, msg_id=f"hb{seq}")
 
 
-def run_loop(*items):
+def run_loop(*items, states=None):
     buf, display, sent = io.StringIO(), Display(), []
     faults_out = SignalPublisher(lambda m: sent.append(m) or UStatus(code=UCode.OK), uris.guardian_fault_topic("v"), 0)
+    states_out = None if states is None else SignalPublisher(
+        lambda m: states.append(contract.parse_state_event(m.payload)) or UStatus(code=UCode.OK),
+        uris.guardian_state_topic("v"), 0)
     try:
-        gmod.loop(Feed(*items), JsonLogger("guardian", None, buf), display, faults_out)
+        gmod.loop(Feed(*items), JsonLogger("guardian", None, buf), display, faults_out, states_out)
     except KeyboardInterrupt:
         pass
     return [json.loads(l) for l in buf.getvalue().splitlines()], display, sent
+
+
+def test_loop_publishes_every_state_and_reason_change_for_the_evidence_collector():
+    states = []
+    run_loop(cells_msg(1, c1=30.0, c2=29.0, c3=28.5, c4=28.8),
+             beat_msg(COMPONENT_CHIP, HB_OK, seq=1), beat_msg(COMPONENT_CHIP, HB_DOWN, seq=2),
+             beat_msg(COMPONENT_DATABROKER, HB_DOWN, seq=3), states=states)
+    changes = [(s.previous, s.state, s.reason) for s in states]
+    assert changes[:3] == [("CLEAR", "MONITORING", "temp ok"), ("MONITORING", "SENSOR_FAULT", "chip silent"),
+                           ("SENSOR_FAULT", "SENSOR_FAULT", "KUKSA down")]
+    assert states[1].msg_id == "hb2" and states[1].run_id == "r1" and states[0].cells
 
 
 def test_loop_reports_a_lost_heartbeat_with_its_message_and_the_dfm_event():

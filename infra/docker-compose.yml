@@ -120,12 +120,21 @@ services:
     environment:
       SIMULATOR_URL: http://simulator:8080
       PUBLISHER_URL: http://vss-uprotocol-client:8081
+      UP_CAMPAIGN_EVENTS: "1"                        # campaign events up://rom-vehicle/1003/1/8005 -> evidence collector
+      ZENOH_CONNECT: tcp/evidence-collector:7447
 
-  # --- TODO placeholders: images build and start, log "not_implemented" and exit ---
   evidence-collector:
-    profiles: ["todo"]
+    profiles: ["tools"]          # records every RoM topic, judges each campaign run: http://localhost:8082/ui/
     build: {context: .., dockerfile: services/evidence-collector/Dockerfile}
     image: localhost/rom/evidence-collector:dev
+    restart: on-failure
+    volumes: [evidence-data:/data]   # events.jsonl, evidence.db, evidence/*.json survive restarts
+    ports: ["127.0.0.1:8082:8082"]
+    environment:
+      ZENOH_LISTEN: tcp/0.0.0.0:7447                                          # the fault-injector connects here
+      ZENOH_CONNECT: tcp/vss-uprotocol-client:7447,tcp/guardian:7447          # cells + heartbeats, faults + state
+      SOVD_URL: http://opensovd:7690/sovd
+    depends_on: [guardian, opensovd]
 
   dev:
     profiles: ["tools"]          # only started on demand
@@ -141,6 +150,7 @@ services:
 volumes:
   kuksa-history:
   dfm-storage:
+  evidence-data:
   # iceoryx2 between dfm and opensovd: /dev/shm (shared memory) and /tmp/iceoryx2 (service/node files)
   # must live and die together, so both are tmpfs volumes mounted into both containers. A shared IPC
   # namespace (ipc: service:dfm) plus a persistent volume breaks on a DFM restart: the restart gets a

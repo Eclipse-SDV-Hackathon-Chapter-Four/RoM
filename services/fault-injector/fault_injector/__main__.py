@@ -7,6 +7,8 @@
 
 Signal and source faults go to the simulator API (SIMULATOR_URL, default http://127.0.0.1:8080), transport faults
 to the vss-uprotocol-client API (PUBLISHER_URL, needs FAULT_API_PORT there). Exit code 0 = completed.
+With --uprotocol (or UP_CAMPAIGN_EVENTS=1) the campaign events also go out on up://<UP_AUTHORITY>/1003/1/8005 for the
+evidence collector (needs rom-uprotocol, see bus.py).
 """
 import argparse
 import os
@@ -30,6 +32,8 @@ def main(argv: Optional[list] = None) -> int:
     r.add_argument("--simulator-url", default=os.environ.get("SIMULATOR_URL", DEFAULT_SIMULATOR_URL))
     r.add_argument("--publisher-url", default=os.environ.get("PUBLISHER_URL"))
     r.add_argument("--dry-run", action="store_true", help="validate and print the timeline, inject nothing")
+    r.add_argument("--uprotocol", action="store_true", default=os.environ.get("UP_CAMPAIGN_EVENTS", "").lower() in ("1", "true", "yes"),
+                   help="also publish the campaign events over uProtocol (evidence collector input)")
     a = p.parse_args(argv)
 
     if a.command == "list":
@@ -59,7 +63,15 @@ def main(argv: Optional[list] = None) -> int:
             log.log("plan_step", at_s=at_s, action=action, target=step.target, type=step.type, cells=step.cells,
                     params=step.params)
         return 0
-    return 0 if runner.run() == "completed" else 1
+    if not a.uprotocol:
+        return 0 if runner.run() == "completed" else 1
+    from . import bus  # needs rom-uprotocol
+    publish, close = bus.uprotocol_publisher(log)
+    runner.log = bus.CampaignLog(log, publish)
+    try:
+        return 0 if runner.run() == "completed" else 1
+    finally:
+        close()
 
 
 if __name__ == "__main__":

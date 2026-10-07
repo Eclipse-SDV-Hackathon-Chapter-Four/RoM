@@ -50,6 +50,30 @@ def heartbeat_topic(authority: Optional[str] = None) -> UUri:
                 resource_id=contract.UP_RESOURCE_HEARTBEAT)
 
 
+def campaign_runner_uri(authority: Optional[str] = None) -> UUri:
+    return UUri(authority_name=_authority(authority), ue_id=contract.UP_CAMPAIGN_RUNNER_UE_ID,
+                ue_version_major=contract.UP_CAMPAIGN_RUNNER_UE_VERSION)
+
+
+def campaign_event_topic(authority: Optional[str] = None) -> UUri:
+    """Topic of the campaign events (evidence markers): up://<authority>/1003/1/8005."""
+    return UUri(authority_name=_authority(authority), ue_id=contract.UP_CAMPAIGN_RUNNER_UE_ID,
+                ue_version_major=contract.UP_CAMPAIGN_RUNNER_UE_VERSION,
+                resource_id=contract.UP_RESOURCE_CAMPAIGN_EVENT)
+
+
+def guardian_state_topic(authority: Optional[str] = None) -> UUri:
+    """Topic of the guardian state: up://<authority>/1002/1/8006."""
+    return UUri(authority_name=_authority(authority), ue_id=contract.UP_GUARDIAN_UE_ID,
+                ue_version_major=contract.UP_GUARDIAN_UE_VERSION,
+                resource_id=contract.UP_RESOURCE_GUARDIAN_STATE)
+
+
+def evidence_collector_uri(authority: Optional[str] = None) -> UUri:
+    """uEntity of the evidence collector (a listener only)."""
+    return UUri(authority_name=_authority(authority), ue_id=contract.UP_EVIDENCE_COLLECTOR_UE_ID, ue_version_major=1)
+
+
 def monitor_uri(authority: Optional[str] = None) -> UUri:
     """uEntity of the rom-up-monitor tool (a listener only, never published as a source)."""
     return UUri(authority_name=_authority(authority), ue_id=contract.UP_MONITOR_UE_ID, ue_version_major=1)

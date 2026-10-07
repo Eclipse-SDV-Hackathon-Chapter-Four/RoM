@@ -7,6 +7,6 @@
 -e ./services/guardian
 -e ./services/simulator
 -e ./services/adapter
--e ./services/fault-injector
--e ./services/evidence-collector
+-e ./services/fault-injector[uprotocol]
+-e ./services/evidence-collector[test]
 pytest

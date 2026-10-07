@@ -9,8 +9,10 @@
     UpCellsSource    cell temperatures         up://…/1001/1/8002   -> CellsSample   (guardian input)
     UpFaultSource    guardian fault events     up://…/1002/1/8003   -> FaultEvent    (DFM reporter input)
     UpHeartbeatSource heartbeats               up://…/1001/1/8004   -> HeartbeatSample (guardian input)
+    UpCampaignSource campaign events           up://…/1003/1/8005   -> CampaignEvent (evidence collector input)
+    UpStateSource    guardian state            up://…/1002/1/8006   -> StateEvent    (evidence collector input)
 
-Watch a topic from a terminal:  rom-up-monitor [--cells | --faults | --heartbeats]
+Watch a topic from a terminal:  rom-up-monitor [--cells | --faults | --heartbeats | --campaign | --state]
 """
 import argparse
 import signal
@@ -145,6 +147,22 @@ class UpHeartbeatSource(_JsonSource):
                                rx_ts_ms=rx_ts_ms, msg_id=msg_id)
 
 
+class UpCampaignSource(_JsonSource):
+    """Campaign events of the fault-injector (up://…/1003/1/8005) -> on_sample(CampaignEvent)."""
+    default_topic = staticmethod(uris.campaign_event_topic)
+
+    def _convert(self, payload, rx_ts_ms, msg_id) -> contract.CampaignEvent:
+        return contract.parse_campaign_event(payload)
+
+
+class UpStateSource(_JsonSource):
+    """Guardian state (up://…/1002/1/8006) -> on_sample(StateEvent)."""
+    default_topic = staticmethod(uris.guardian_state_topic)
+
+    def _convert(self, payload, rx_ts_ms, msg_id) -> contract.StateEvent:
+        return contract.parse_state_event(payload)
+
+
 def main(argv: Optional[list] = None):
     """rom-up-monitor [--cells | --faults]: print every message of one RoM topic as a JSON line."""
     parser = argparse.ArgumentParser(description="Print RoM uProtocol messages as JSON lines.")
@@ -152,6 +170,8 @@ def main(argv: Optional[list] = None):
     which.add_argument("--cells", action="store_true", help="cell temperatures, up://…/1001/1/8002")
     which.add_argument("--faults", action="store_true", help="guardian fault events, up://…/1002/1/8003")
     which.add_argument("--heartbeats", action="store_true", help="heartbeats, up://…/1001/1/8004")
+    which.add_argument("--campaign", action="store_true", help="campaign events, up://…/1003/1/8005")
+    which.add_argument("--state", action="store_true", help="guardian state, up://…/1002/1/8006")
     args = parser.parse_args(argv)
     log = jsonlog.get_logger("up_subscriber")
     last_seq = {"seq": None}
@@ -184,7 +204,11 @@ def main(argv: Optional[list] = None):
         log.log("heartbeat", component=h.component, status=h.status, seq=h.seq, msg_id=h.msg_id,
                 latency_ms=h.rx_ts_ms - h.ts_ms)
 
-    if args.faults:
+    if args.campaign:
+        source_cls, handler = UpCampaignSource, lambda e: log.log("campaign_event", **asdict(e))
+    elif args.state:
+        source_cls, handler = UpStateSource, lambda e: log.log("state_event", **asdict(e))
+    elif args.faults:
         source_cls, handler = UpFaultSource, on_fault
     elif args.heartbeats:
         source_cls, handler = UpHeartbeatSource, on_heartbeat

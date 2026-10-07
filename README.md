@@ -23,7 +23,7 @@ Every component is its own pip package; services that run under Ankaios have the
 | `services/fault-injector` | `fault_injector` | ✅ | Fault Campaign Runner: YAML campaigns → simulator / publisher fault APIs |
 | `services/dfm` | `rom_dfm` (Rust) | ✅ | Diagnostic Fault Manager: fault-lib `dfm_bin` + guardian fault events (uProtocol) → fault records |
 | `services/opensovd` | `rom-opensovd` (Rust) | ✅ | Eclipse OpenSOVD server: SOVD entities + DFM faults (`/sovd/v1/apps/battery_guardian/faults`) |
-| `services/evidence-collector` | `evidence_collector` | ✅ TODO | Evidence Collector → verdicts |
+| `services/evidence-collector` | `evidence_collector` | ✅ | Evidence Collector: every uProtocol topic + OpenSOVD → PASS / FAIL / INCONCLUSIVE per campaign run, safety case, evidence bundle |
 | `MXChip/AZ3166` | – (C firmware) | – | AZ3166 board on Eclipse ThreadX: sensor telemetry over MQTT, guardian state on its OLED |
 
 ## Quick start
@@ -91,6 +91,8 @@ pytest -q
 | `SIM_API_HOST` / `SIM_API_PORT` | `127.0.0.1` / `8080` | simulator fault API (`0` = off) |
 | `FAULT_API_HOST` / `FAULT_API_PORT` | `127.0.0.1` / unset (off) | vss-uprotocol-client transport-fault API |
 | `SIMULATOR_URL` / `PUBLISHER_URL` | `http://127.0.0.1:8080` / – | fault-injector |
+| `UP_CAMPAIGN_EVENTS` | unset | fault-injector: `1` = campaign events over uProtocol for the evidence collector |
+| `SOVD_URL`, `EVIDENCE_*` | see [`services/evidence-collector`](services/evidence-collector/README.md) | evidence-collector |
 | `WARN_C`, `CRIT_C` | `38`, `45` | guardian |
 | `STALE_MS`, `STUCK_S`, `MIN_PLAUSIBLE_C`, `MAX_PLAUSIBLE_C` | `2000`, `10`, `-40`, `150` | guardian (`STALE_MS` is also the uProtocol TTL) |
 | `VSS_SOURCE_PATH` | `Vehicle.Powertrain.TractionBattery.Temperature.Max` | vss-uprotocol-client |
@@ -114,6 +116,7 @@ Faults are injected into the running stack over HTTP, by hand or by the Fault Ca
 make guardian                                   # stack up; fault APIs on 127.0.0.1:8080 (simulator) and :8081 (publisher)
 make campaigns                                  # bundled campaigns
 make campaign C=thermal_runaway                 # run one; watch the guardian state change in the guardian logs
+make evidence                                   # verdict per run (report: http://localhost:8082/ui/)
 curl -XPOST localhost:8080/faults -d '{"type":"stuck","cell":1}'      # or by hand
 curl -XDELETE localhost:8080/faults
 ```
@@ -331,7 +334,8 @@ flowchart LR
 #### 3. Guardian
 - [x] Publish fault events over uProtocol (`up://rom-vehicle/1002/1/8003` → DFM, Python ↔ Rust `up-transport-zenoh`)
 - [x] Heartbeats from the uProtocol link, the KUKSA databroker, the adapter / simulator and the physical chip; the guardian names the failing component (DFM code for the root cause)
-- [ ] Publish state, heartbeat and mitigation events over uProtocol (the guardian's own outgoing heartbeat)
+- [x] Publish state and mitigation over uProtocol (`up://rom-vehicle/1002/1/8006`, on every change and every second)
+- [ ] The guardian's own outgoing heartbeat over uProtocol
 - [ ] Firmware heartbeat from the AZ3166 itself (independent of the sensor read; needs a re-flash)
 - [ ] Detect duplicate / reordered messages and implausible rate of change
 - [ ] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event
@@ -342,10 +346,10 @@ flowchart LR
 - [ ] Diagnostic faults: delayed DFM write · partial OpenSOVD visibility
 
 #### 5. Evidence & verdicts
-- [ ] Hazard and safety-goal catalog linked to each campaign
-- [ ] Evidence Collector correlating campaign → events → diagnostics
-- [ ] Verdict per run: PASS / FAIL / INCONCLUSIVE, with detection latency and mitigation timing
-- [ ] Report covering all campaigns, failed scenarios included
+- [x] Hazard and safety-goal catalog linked to each campaign (`services/evidence-collector/evidence_collector/safety_case.yaml`, checked against every bundled campaign)
+- [x] Evidence Collector correlating campaign → events → diagnostics, all over uProtocol (campaign events `…/1003/1/8005`, guardian state `…/1002/1/8006`)
+- [x] Verdict per run: PASS / FAIL / INCONCLUSIVE, with detection latency and mitigation timing
+- [x] Report covering all campaigns, failed scenarios included (`/ui/`, ZIP bundle with SHA-256 manifest)
 
 #### 6. Orchestration & platform
 - [ ] Eclipse Ankaios manages the final orchestrated run
