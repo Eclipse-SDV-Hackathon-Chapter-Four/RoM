@@ -6,9 +6,9 @@ import LastMessageCard from "./LastMessageCard";
 import RecentEvents from "./RecentEvents";
 import LiveStatus from "./LiveStatus";
 import ScenarioControls from "./ScenarioControls";
-import SensorStatusCard from "./SensorStatusCard";
+import DataSourcesCard from "./DataSourcesCard";
 import SystemFlow from "./SystemFlow";
-import TemperatureCard from "./TemperatureCard";
+import BatteryCellsCard from "./BatteryCellsCard";
 import TemperatureChart from "./TemperatureChart";
 
 export default function Dashboard({ source }: { source: DashboardDataSource }) {
@@ -43,11 +43,11 @@ export default function Dashboard({ source }: { source: DashboardDataSource }) {
 
       {data ? (
         <main className="grid">
-          <TemperatureCard battery={data.battery} />
-          <GuardianStateCard guardian={data.guardian} />
+          <BatteryCellsCard battery={data.battery} />
+          <GuardianStateCard guardian={data.guardian} battery={data.battery} />
           <div className="side-stack">
-            <SensorStatusCard sensor={data.sensor} />
-            <LastMessageCard message={data.message} sensor={data.sensor} updatedAt={data.timestamp} />
+            <DataSourcesCard sources={data.sources} />
+            <LastMessageCard message={data.message} updatedAt={data.timestamp} />
           </div>
           <TemperatureChart history={data.history} battery={data.battery} now={data.timestamp} />
           <RecentEvents events={data.events} />

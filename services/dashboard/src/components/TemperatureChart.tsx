@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BatteryInfo, HistoryPoint } from "../types/dashboard";
 import { ChartIcon } from "./icons";
-import { formatTime } from "./stateStyle";
+import { cellColor, formatTime } from "./stateStyle";
 
 interface Props {
   history: HistoryPoint[];
@@ -12,7 +12,7 @@ interface Props {
 
 const M = { left: 48, right: 14, top: 12, bottom: 30 };
 
-/** Smallest "round" tick spacing that gives at least four labels for the visible time span. */
+/** Smallest "round" tick spacing that gives at most eight labels for the visible time span. */
 const TICK_STEPS_MS = [10_000, 20_000, 30_000, 60_000, 120_000, 300_000];
 const tickStep = (spanMs: number) => TICK_STEPS_MS.find((s) => spanMs / s <= 8) ?? TICK_STEPS_MS[TICK_STEPS_MS.length - 1];
 
@@ -36,46 +36,65 @@ export default function TemperatureChart({ history, battery, now }: Props) {
   const PW = W - M.left - M.right;
   const PH = H - M.top - M.bottom;
 
-  const { warn_c, crit_c } = battery;
+  const { warn_c, crit_c, cells, pack_max_cell: hottest } = battery;
   const times = history.map((p) => Date.parse(p.timestamp));
   const t1 = Date.parse(now);
   const t0 = times.length ? Math.min(times[0], t1 - 60_000) : t1 - 600_000;
 
   // y range follows the data but always shows both thresholds; it implies no other limits.
-  const temps = history.map((p) => p.temperature_c);
+  const temps = history.flatMap((p) => Object.values(p.cells).filter((v): v is number => v !== null));
   const yMin = Math.floor(Math.min(25, ...temps) / 5) * 5 - 5;
   const yMax = Math.ceil(Math.max(crit_c + 10, ...temps) / 5) * 5 + 5;
 
   const x = (t: number) => M.left + ((t - t0) / (t1 - t0)) * PW;
   const y = (v: number) => M.top + (1 - (v - yMin) / (yMax - yMin)) * PH;
 
-  const line = history.map((p, i) => `${i ? "L" : "M"}${x(times[i]).toFixed(1)},${y(p.temperature_c).toFixed(1)}`).join(" ");
-  const last = history.length - 1;
-  const area = history.length
-    ? `${line} L${x(times[last]).toFixed(1)},${y(yMin)} L${x(times[0]).toFixed(1)},${y(yMin)} Z`
-    : "";
+  /** One path per cell. A missing / untrusted reading (null) breaks the line instead of being interpolated. */
+  const pathFor = (id: number) => {
+    let d = "";
+    let pen = false;
+    history.forEach((p, i) => {
+      const v = p.cells[id] ?? null;
+      if (v === null) {
+        pen = false;
+        return;
+      }
+      d += `${pen ? "L" : "M"}${x(times[i]).toFixed(1)},${y(v).toFixed(1)} `;
+      pen = true;
+    });
+    return d.trim();
+  };
 
+  const last = history.length - 1;
   const yTicks: number[] = [];
   for (let v = Math.ceil(yMin / 10) * 10; v <= yMax; v += 10) yTicks.push(v);
   const xTicks: number[] = [];
   const step = tickStep(t1 - t0);
-  for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) xTicks.push(t);
+  // stop short of the right edge: a centred label there would be clipped
+  for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) if (x(t) <= W - M.right - 24) xTicks.push(t);
 
   const signalLost = history.length > 0 && t1 - times[last] > 3_000;
+  // Draw the hottest valid cell last (on top) and thicker, so the pack maximum can be followed by eye.
+  const order = [...cells].sort((a, b) => Number(a.id === hottest) - Number(b.id === hottest));
 
   return (
     <section className="card chart-card" aria-label="Temperature history">
-      <h2 className="card-title"><span className="icon"><ChartIcon /></span>Temperature History</h2>
+      <h2 className="card-title">
+        <span className="icon"><ChartIcon /></span>Temperature History
+        <ul className="legend" aria-label="Legend">
+          {cells.map((c) => (
+            <li key={c.id} className={c.status === "OK" ? "" : "legend-off"}>
+              <span className="legend-line" style={{ background: cellColor(c.id) }} />
+              Cell {c.id}
+              <span className="legend-src">{c.source}</span>
+            </li>
+          ))}
+          <li className="legend-note"><span className="legend-thick" />Thick line = Pack Max</li>
+        </ul>
+      </h2>
       <div className="chart-wrap" ref={wrapRef}>
       <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img"
-           aria-label={`Battery temperature over time with warning at ${warn_c} °C and critical at ${crit_c} °C`}>
-        <defs>
-          <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-
+           aria-label={`Temperature of the four battery cells over time with warning at ${warn_c} °C and critical at ${crit_c} °C`}>
         <rect x={M.left} y={y(warn_c)} width={PW} height={y(yMin) - y(warn_c)} fill="#1f7a45" opacity="0.2" />
         <rect x={M.left} y={y(crit_c)} width={PW} height={y(warn_c) - y(crit_c)} fill="#b7791f" opacity="0.28" />
         <rect x={M.left} y={M.top} width={PW} height={y(crit_c) - M.top} fill="#9b2c2c" opacity="0.3" />
@@ -99,9 +118,21 @@ export default function TemperatureChart({ history, battery, now }: Props) {
         <text x={M.left + 10} y={y(warn_c) - 8} className="zone zone-warning">WARNING (≥ {warn_c} °C)</text>
         <text x={M.left + 10} y={y(yMin) - 8} className="zone zone-normal">NORMAL</text>
 
-        {area && <path d={area} fill="url(#area)" />}
-        {line && <path d={line} fill="none" stroke="#38bdf8" strokeWidth="2.2" strokeLinejoin="round" />}
-        {history.length > 0 && <circle cx={x(times[last])} cy={y(history[last].temperature_c)} r="4" fill="#38bdf8" />}
+        {order.map((c) => {
+          const d = pathFor(c.id);
+          const isMax = c.id === hottest;
+          const tail = last >= 0 ? history[last].cells[c.id] ?? null : null;
+          return (
+            <g key={c.id}>
+              {d && <path d={d} fill="none" stroke={cellColor(c.id)} strokeWidth={isMax ? 3.4 : 1.8}
+                          strokeLinejoin="round" strokeLinecap="round" opacity={isMax ? 1 : 0.85} />}
+              {tail !== null && (
+                <circle cx={x(times[last])} cy={y(tail)} r={isMax ? 5 : 3.5} fill={cellColor(c.id)}
+                        stroke={isMax ? "#fff" : "none"} strokeWidth="1.5" />
+              )}
+            </g>
+          );
+        })}
 
         {signalLost && (
           <g>

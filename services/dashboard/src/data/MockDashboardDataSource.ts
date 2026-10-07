@@ -6,7 +6,8 @@ const SCENARIOS: ScenarioInfo[] = [
   { id: "NORMAL", label: "Normal" },
   { id: "WARNING", label: "Warning" },
   { id: "CRITICAL", label: "Critical" },
-  { id: "SENSOR_FAULT", label: "Sensor fault" },
+  { id: "CELL_FAULT", label: "Cell faults" },
+  { id: "STREAM_LOSS", label: "Stream loss" },
 ];
 
 /**
