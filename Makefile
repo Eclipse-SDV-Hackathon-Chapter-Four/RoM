@@ -65,7 +65,7 @@ dfm-faults: ## fault records in the running DFM (make guardian first)
 	$(DC) --profile tools exec dfm rom-dfm query
 
 dfm-fixtures: ## regenerate services/dfm/fixtures: guardian test scenario -> events -> real DFM -> query output
-	$(DC) run --rm --no-deps -T dev python -m guardian.guardian --fault-events > services/dfm/fixtures/guardian_events.jsonl
+	$(DC) run --rm --no-deps -T dev sh -c 'python -m guardian.guardian --fault-events > /app/services/dfm/fixtures/guardian_events.jsonl'
 	$(DC) --profile tools build dfm
 	$(firstword $(DC_BIN)) run --rm localhost/rom/dfm:dev sh -c 'dfm_bin --catalog-dir /etc/rom/catalog --storage-dir /tmp/dfm >/dev/null 2>&1 & \
 	  rom-dfm replay /etc/rom/fixtures/guardian_events.jsonl >/dev/null && rom-dfm query --stable' > services/dfm/fixtures/battery_guardian_faults.json
