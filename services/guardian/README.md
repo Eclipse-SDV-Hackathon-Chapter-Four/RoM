@@ -37,4 +37,20 @@ Image: `services/guardian/Dockerfile` → `localhost/rom/guardian:dev` (env-only
 thresholds: production values are manufacturer, cell and pack specific. Override them via the environment
 (`rom_common.config.thresholds()` uses the same defaults).
 
+## Plausibility bounds
+
+`MIN_PLAUSIBLE_C` / `MAX_PLAUSIBLE_C` (−40 / 150 °C) only decide whether a reading is believable; they are not
+thermal thresholds. The check is inclusive (`MIN <= temp <= MAX`), so 150 °C is still valid:
+
+| Reading | State / reason |
+|---|---|
+| 45, 100, 149, 150 °C | `CRITICAL` / `too hot` (then `MITIGATING`) |
+| above 150 °C (e.g. 151, 200) | `SENSOR_FAULT` / `out of range` |
+
+The only recorded reason for 150 is commit `e9a4b4e` (previous limit 100 °C classed a real overheat as a sensor
+fault); there is no cited standard behind the exact value.
+
+Open design question, not decided yet: should an extremely high out-of-range temperature be treated only as
+`SENSOR_FAULT`, or should the system also enter a fail-safe mitigation path?
+
 Test: `pytest services/guardian`

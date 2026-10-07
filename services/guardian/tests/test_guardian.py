@@ -1,5 +1,6 @@
 # Made with Claude (Claude Code, Anthropic)
 from rom_common.contracts import CRITICAL, STATES, parse_display_cmd
+from guardian import guardian as guardian_module
 from guardian.guardian import MITIGATING, SCENARIO, Guardian, display_cmd
 
 
@@ -25,3 +26,9 @@ def test_display_cmd_follows_contract():
 def test_display_cmd_shows_mitigating_as_critical():
     cmd = parse_display_cmd(display_cmd(MITIGATING, 46.0, "cooling requested", 2, 1))
     assert (cmd["state"], cmd["reason"]) == (CRITICAL, "cooling requested")
+
+
+def test_max_plausible_bound_is_inclusive():
+    top = guardian_module.MAX_C
+    assert Guardian().update(0.0, top)[0] != "SENSOR_FAULT"
+    assert Guardian().update(0.0, top + 0.01) == ("SENSOR_FAULT", "out of range")
