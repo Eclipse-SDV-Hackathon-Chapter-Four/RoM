@@ -1,0 +1,50 @@
+# Made with Claude (Claude Code, Anthropic)
+# Safety case of the Battery Thermal Guardian: hazard -> safety goal -> safety requirement -> campaigns (run_id).
+# The evidence collector refuses to start if a link is broken (safety_case.py), and a campaign that is not listed
+# here can never PASS: it proves no requirement. A campaign's own `hazard` / `safety_goal` text must start with the
+# ids used here (e.g. "H1+H2: ...", "SG1: ..."); tests/test_safety_case.py checks every bundled campaign.
+hazards:
+  - {id: H1, description: "Thermal runaway of a traction battery cell goes unnoticed"}
+  - {id: H2, description: "A frozen (stuck) temperature sensor hides a developing fault"}
+  - {id: H3, description: "An implausible temperature reading triggers a wrong reaction"}
+  - {id: H4, description: "Loss of the temperature source or of one cell sensor"}
+  - {id: H5, description: "Interrupted signal replay / source stall"}
+  - {id: H6, description: "The uProtocol message stream or link is lost or degraded"}
+  - {id: H7, description: "Delayed delivery makes the guardian act on old data"}
+  - {id: H8, description: "The sensor chip hangs or loses power while data keeps flowing"}
+  - {id: H9, description: "The signal producer process is dead"}
+  - {id: H10, description: "The KUKSA databroker is unavailable"}
+
+safety_goals:
+  - {id: SG1, hazards: [H1, H6], description: "Warn at 38 °C and request cooling at 45 °C pack maximum, also with a faulty sensor or a degraded link"}
+  - {id: SG2, hazards: [H2], description: "Detect a stuck signal within 10 s and stop trusting it, without disarming the pack warning"}
+  - {id: SG3, hazards: [H3], description: "Readings outside -40..150 °C are a sensor fault, not an overheat"}
+  - {id: SG4, hazards: [H4, H5, H6], description: "A silent signal or cell is a sensor fault after 2 s; the pack stays monitored on the other cells"}
+  - {id: SG5, hazards: [H7], description: "Late data must not be treated as current"}
+  - {id: SG6, hazards: [H6, H8, H9, H10], description: "Name the failing component (link, databroker, producer, chip) within 3 s"}
+
+safety_requirements:
+  - id: SR-01
+    safety_goal: SG1
+    description: "over_temp_warning at >= 38 °C, over_temp_critical and MITIGATING at >= 45 °C on the hottest valid cell"
+    campaigns: [thermal-runaway-01, combined-runaway-lossy-link-01, cell-faulty-while-other-hot-01]
+  - id: SR-02
+    safety_goal: SG2
+    description: "A cell unchanged for 10 s raises its own signal_stuck DTC and is left out of the pack state"
+    campaigns: [sensor-stuck-01, sensor-stuck-cell3-01]
+  - id: SR-03
+    safety_goal: SG3
+    description: "A cell outside -40..150 °C raises its own out_of_range DTC and is left out"
+    campaigns: [out-of-range-01]
+  - id: SR-04
+    safety_goal: SG4
+    description: "No cell message for 2 s raises signal_stale (SENSOR_FAULT); one missing cell raises its own DTC"
+    campaigns: [source-dropout-01, cell-dropout-cell2-01, replay-interruption-01, transport-drop-01]
+  - id: SR-05
+    safety_goal: SG5
+    description: "Messages older than their 2 s TTL are discarded, so late data becomes signal_stale"
+    campaigns: [transport-delay-01]
+  - id: SR-06
+    safety_goal: SG6
+    description: "A lost heartbeat raises the DTC of the root cause closest to the guardian within 3 s"
+    campaigns: [chip-heartbeat-loss-01, producer-heartbeat-loss-01, databroker-down-01, uprotocol-heartbeat-loss-01]

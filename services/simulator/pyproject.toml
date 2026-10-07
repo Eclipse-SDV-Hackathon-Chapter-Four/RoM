@@ -10,6 +10,9 @@ description = "RoM sine-wave battery temperature simulator writing into KUKSA"
 requires-python = ">=3.10"
 dependencies = ["rom-common[kuksa]"]
 
+[project.optional-dependencies]
+cooling = ["rom-uprotocol"]   # SIM_COOLING=1: guardian state over uProtocol (plus up-python, --no-deps)
+
 [project.scripts]
 rom-simulator = "simulator.simulator:main"
 

@@ -70,10 +70,26 @@ curl -s -XDELETE localhost:8080/faults
 `dropout` wins over a signal fault on the same cell. `Max` is computed over the cells that are written; when none
 is, only the heartbeats are written (the process is alive, the data is not). Ticks keep their schedule during faults.
 
+## Cooling: the simulator as the cooling actuator
+
+With `SIM_COOLING=1` (set in compose) the simulator listens to the guardian state over uProtocol
+(`up://rom-vehicle/1002/1/8006`, needs `pip install './services/simulator[cooling]'` and `ZENOH_CONNECT` to the
+guardian). While the guardian is `MITIGATING`, every simulated cell loses `SIM_COOLING_C_PER_S` (default 3 °C/s).
+After that the removed heat comes back slowly at `SIM_COOLING_RELAX_C_PER_S` (0.2 °C/s). A new run (`POST /run`)
+resets it. Cooling is applied to the wave **before** the faults: a stuck sensor does not see it, and a drift keeps
+heating on top of it.
+
+The guardian allows 5 s (`MITIGATION_TIMEOUT_S`) to get the hottest cell from 45 °C back below 38 °C. At 3 °C/s that
+takes about 3 s, even against the 0.7 °C/s drift of `thermal_runaway`. In that campaign the pack therefore goes
+CRITICAL → MITIGATING → MONITORING a few times and never reaches `mitigation_failed`
+(`tests/test_cooling.py` runs this closed loop against the real guardian logic). Set `SIM_COOLING_C_PER_S=0.5` to see
+mitigation fail.
+
 ## Log events
 
-`campaign_start`, `sample` (`temp_c` = Max or null, `cells`, `stalled`, `heartbeats`), `run_started`, `fault_injected`,
-`fault_cleared` (`reason`: `api` / `expired` / `new_run`), `campaign_end`, `api_started` / `api_unavailable`.
+`campaign_start`, `sample` (`temp_c` = Max or null, `cells`, `stalled`, `heartbeats`, `cooling_c`), `run_started`,
+`fault_injected`, `fault_cleared` (`reason`: `api` / `expired` / `new_run`), `campaign_end`, `api_started` /
+`api_unavailable`, `cooling_subscribed`.
 
 ## Test
 

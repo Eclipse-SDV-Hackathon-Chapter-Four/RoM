@@ -43,6 +43,13 @@ While the input cannot be judged (stream stale), earlier codes keep their state:
 The guardian listens on `ZENOH_LISTEN` (compose: `tcp/0.0.0.0:7447`) so the DFM reporter can connect to it.
 Watch: `rom-up-monitor --faults`.
 
+## State events (evidence collector input)
+
+The state goes out on `up://<UP_AUTHORITY>/1002/1/8006` (`StateEvent`: `state`, `previous`, `reason`, `temp_c`, `cell`,
+`cells`, `seq`, `msg_id`, `run_id`; JSON, no TTL) on every state or reason change and every second (`previous ==
+state`), `MITIGATING` included. The [evidence collector](../evidence-collector/README.md) judges each campaign run
+from it. Watch: `rom-up-monitor --state`.
+
 ## Display output
 
 The guardian also publishes its state for the device display on `rom/actuator/display/cmd`
@@ -55,7 +62,7 @@ heartbeat. `MITIGATING` is not a contract state, so it is sent as `CRITICAL` wit
 
 ```bash
 rom-guardian                 # offline test scenario, no broker needed
-rom-guardian --uprotocol     # live, reads cells (.../1001/1/8002) and heartbeats (.../8004), publishes faults on .../1002/1/8003
+rom-guardian --uprotocol     # live, reads cells (.../1001/1/8002) and heartbeats (.../8004), publishes faults on .../1002/1/8003 and its state on .../8006
 make guardian                # whole chain in containers
 ```
 

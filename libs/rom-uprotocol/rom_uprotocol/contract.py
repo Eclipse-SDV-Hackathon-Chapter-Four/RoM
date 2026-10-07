@@ -5,18 +5,22 @@
     up://<UP_AUTHORITY>/1001/1/8002   battery cell temperatures (VSS uProtocol Client)   build_/parse_cells_msg
     up://<UP_AUTHORITY>/1002/1/8003   guardian fault events     (guardian -> DFM)         build_/parse_fault_event
     up://<UP_AUTHORITY>/1001/1/8004   heartbeats                (VSS uProtocol Client)   build_/parse_heartbeat_msg
+    up://<UP_AUTHORITY>/1003/1/8005   campaign events           (fault-injector -> evidence collector)  build_/parse_campaign_event
+    up://<UP_AUTHORITY>/1002/1/8006   guardian state            (guardian -> evidence collector)        build_/parse_state_event
 
 Authority from env, see config.uprotocol(). All payloads are UPAYLOAD_FORMAT_JSON.
 """
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Dict, Mapping, Optional
 
-from rom_common.contracts import FAULT_CODES, HB_DOWN, HB_OK, N_CELLS, ContractError, _is_number
+from rom_common.contracts import FAULT_CODES, HB_DOWN, HB_OK, N_CELLS, STATES, ContractError, _is_number
 
 __all__ = ["ContractError", "SignalMsg", "build_signal_msg", "parse_signal_msg", "CellsMsg", "build_cells_msg",
            "parse_cells_msg", "FaultEvent", "build_fault_event", "parse_fault_event", "FAULT_STAGES", "HeartbeatMsg",
-           "build_heartbeat_msg", "parse_heartbeat_msg"]
+           "build_heartbeat_msg", "parse_heartbeat_msg", "CampaignEvent", "build_campaign_event",
+           "parse_campaign_event", "CAMPAIGN_EVENTS", "StateEvent", "build_state_event", "parse_state_event",
+           "GUARDIAN_STATES"]
 
 UP_VSS_PUBLISHER_UE_ID = 0x1001          # uEntity "VSS uProtocol Client", instance 0
 UP_VSS_PUBLISHER_UE_VERSION = 1
@@ -26,6 +30,12 @@ UP_GUARDIAN_UE_ID = 0x1002               # uEntity "Battery Thermal Guardian"
 UP_GUARDIAN_UE_VERSION = 1
 UP_RESOURCE_GUARDIAN_FAULT = 0x8003      # topic: guardian fault events (FAILED / PASSED edges for the DFM)
 UP_RESOURCE_HEARTBEAT = 0x8004           # topic: heartbeats of the client itself and of the databroker it probes
+UP_CAMPAIGN_RUNNER_UE_ID = 0x1003       # uEntity "Fault Campaign Runner" (fault-injector)
+UP_CAMPAIGN_RUNNER_UE_VERSION = 1
+UP_RESOURCE_CAMPAIGN_EVENT = 0x8005      # topic: campaign start / fault injected / cleared / end (evidence markers)
+UP_RESOURCE_GUARDIAN_STATE = 0x8006      # topic: guardian state, on every change and periodically
+UP_EVIDENCE_COLLECTOR_UE_ID = 0x1004     # uEntity "Evidence Collector" (a listener only)
+UP_SIMULATOR_UE_ID = 0x1005              # uEntity "Simulator" as the cooling actuator (listens to the guardian state)
 UP_MONITOR_UE_ID = 0x10FF                # uEntity of the rom-up-monitor tool
 
 
@@ -220,3 +230,90 @@ def parse_heartbeat_msg(payload: "bytes | str") -> HeartbeatMsg:
     if not all(_is_number(data.get(k)) for k in ("seq", "ts_ms")):
         raise ContractError("seq_or_ts_not_a_number")
     return HeartbeatMsg(component=component, status=data["status"], seq=int(data["seq"]), ts_ms=int(data["ts_ms"]))
+
+
+CAMPAIGN_EVENTS = ("campaign_start", "fault_injected", "fault_cleared", "fault_failed", "campaign_end")
+
+
+@dataclass(frozen=True)
+class CampaignEvent:
+    """One step of a fault campaign, as the runner logs it: the evidence collector's START / END markers.
+
+    data holds the fields of the runner's log line (campaign_start: hazard, safety_goal, expected_state,
+    expected_faults, max_detect_ms, seed, duration_s, baseline, faults; campaign_end: status, error; ...).
+    """
+    event: str
+    run_id: str
+    ts_ms: int
+    seq: int = 0
+    data: Dict = field(default_factory=dict)
+
+
+def build_campaign_event(event: CampaignEvent) -> bytes:
+    if event.event not in CAMPAIGN_EVENTS:
+        raise ContractError(f"unknown_campaign_event: {event.event}")
+    return json.dumps(asdict(event), separators=(",", ":"), default=str).encode()
+
+
+def parse_campaign_event(payload: "bytes | str") -> CampaignEvent:
+    """Parse + validate a campaign event. Raises ContractError."""
+    data = _load_object(payload)
+    if data.get("event") not in CAMPAIGN_EVENTS:
+        raise ContractError(f"unknown_campaign_event: {data.get('event')}")
+    if not isinstance(data.get("run_id"), str) or not data["run_id"]:
+        raise ContractError("run_id_missing")
+    if not _is_number(data.get("ts_ms")):
+        raise ContractError("ts_not_a_number")
+    if data.get("data") is not None and not isinstance(data["data"], dict):
+        raise ContractError("data_not_an_object")
+    seq = data.get("seq", 0)
+    return CampaignEvent(data["event"], data["run_id"], int(data["ts_ms"]), int(seq) if _is_number(seq) else 0,
+                         dict(data.get("data") or {}))
+
+
+GUARDIAN_STATES = STATES + ("MITIGATING",)   # MITIGATING is internal to the guardian (the display shows CRITICAL)
+
+
+@dataclass(frozen=True)
+class StateEvent:
+    """The guardian's state. previous == state for a periodic update or a new reason in the same state.
+
+    seq / msg_id: the message (cell update or heartbeat) behind it; run_id from the last cell message.
+    """
+    state: str
+    previous: str
+    reason: str
+    ts_ms: int
+    temp_c: Optional[float] = None
+    cell: Optional[int] = None
+    cells: str = ""
+    seq: Optional[int] = None
+    msg_id: Optional[str] = None
+    run_id: Optional[str] = None
+
+
+def build_state_event(event: StateEvent) -> bytes:
+    if event.state not in GUARDIAN_STATES or event.previous not in GUARDIAN_STATES:
+        raise ContractError(f"unknown_state: {event.previous} -> {event.state}")
+    return json.dumps(asdict(event), separators=(",", ":")).encode()
+
+
+def parse_state_event(payload: "bytes | str") -> StateEvent:
+    """Parse + validate a guardian state event. Raises ContractError."""
+    data = _load_object(payload)
+    if data.get("state") not in GUARDIAN_STATES or data.get("previous") not in GUARDIAN_STATES:
+        raise ContractError(f"unknown_state: {data.get('previous')} -> {data.get('state')}")
+    if not _is_number(data.get("ts_ms")):
+        raise ContractError("ts_not_a_number")
+    for key in ("cell", "seq"):
+        if data.get(key) is not None and not (_is_number(data[key]) and float(data[key]).is_integer()):
+            raise ContractError(f"{key}_not_an_integer")
+    if data.get("temp_c") is not None and not _is_number(data["temp_c"]):
+        raise ContractError("temp_c_not_a_number")
+    return StateEvent(
+        state=data["state"], previous=data["previous"], reason=str(data.get("reason") or ""),
+        ts_ms=int(data["ts_ms"]), temp_c=None if data.get("temp_c") is None else float(data["temp_c"]),
+        cell=None if data.get("cell") is None else int(data["cell"]), cells=str(data.get("cells") or ""),
+        seq=None if data.get("seq") is None else int(data["seq"]), msg_id=data.get("msg_id"),
+        run_id=data.get("run_id"),
+    )

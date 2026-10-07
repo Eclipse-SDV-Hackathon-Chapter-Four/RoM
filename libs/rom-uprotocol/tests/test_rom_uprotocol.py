@@ -185,7 +185,7 @@ def test_publish_reaches_subscriber_over_real_zenoh():
 
 
 # --- 4 cells and guardian fault events --------------------------------------------------------------------------
-from rom_uprotocol.subscriber import UpCellsSource, UpFaultSource  # noqa: E402
+from rom_uprotocol.subscriber import UpCampaignSource, UpCellsSource, UpFaultSource, UpStateSource  # noqa: E402
 
 
 def _json_msg(topic, payload, fmt=UPayloadFormat.UPAYLOAD_FORMAT_JSON):
@@ -264,3 +264,39 @@ def test_cells_and_fault_sources_parse_and_reject():
         _json_msg(topics.guardian_fault_topic("v"), contracts.build_fault_event(event)))
     assert [(s.cells, s.seq, s.run_id) for s in cells] == [({2: 30.5}, 3, "r1")] and cells[0].msg_id
     assert faults == [event] and len(rejects) == 1
+
+
+def test_campaign_event_roundtrip_and_rejects():
+    event = contracts.CampaignEvent("campaign_start", "thermal-runaway-01", 5, 1,
+                                    {"expected_state": "CRITICAL", "max_detect_ms": 35000})
+    assert contracts.parse_campaign_event(contracts.build_campaign_event(event)) == event
+    for bad in ({"event": "nope"}, {"run_id": ""}, {"run_id": None}, {"ts_ms": "x"}, {"data": [1]}):
+        with pytest.raises(contracts.ContractError):
+            contracts.parse_campaign_event(json.dumps({"event": "campaign_end", "run_id": "r", "ts_ms": 1, **bad}))
+    with pytest.raises(contracts.ContractError):
+        contracts.build_campaign_event(contracts.CampaignEvent("nope", "r", 1))
+
+
+def test_state_event_roundtrip_knows_mitigating_and_rejects():
+    event = contracts.StateEvent(state="MITIGATING", previous="CRITICAL", reason="cooling requested", ts_ms=9,
+                                 temp_c=46.1, cell=1, cells="46.1,30,30,30", seq=3, msg_id="01a1", run_id="r1")
+    assert contracts.parse_state_event(contracts.build_state_event(event)) == event
+    for bad in ({"state": "HOT"}, {"previous": None}, {"ts_ms": None}, {"cell": 1.5}, {"temp_c": "hot"}):
+        with pytest.raises(contracts.ContractError):
+            contracts.parse_state_event(json.dumps({"state": "MONITORING", "previous": "CLEAR", "ts_ms": 1, **bad}))
+    with pytest.raises(contracts.ContractError):
+        contracts.build_state_event(contracts.StateEvent(state="HOT", previous="CLEAR", reason="", ts_ms=1))
+
+
+def test_campaign_and_state_topics_and_sources():
+    assert UriSerializer.serialize(topics.campaign_event_topic("v")) == "//v/1003/1/8005"
+    assert UriSerializer.serialize(topics.guardian_state_topic("v")) == "//v/1002/1/8006"
+    got, rejects = [], []
+    campaign = contracts.CampaignEvent("campaign_end", "r1", 2, 4, {"status": "completed"})
+    state = contracts.StateEvent(state="WARNING", previous="MONITORING", reason="getting hot", ts_ms=3)
+    UpCampaignSource(None, got.append, rejects.append).handle(
+        _json_msg(topics.campaign_event_topic("v"), contracts.build_campaign_event(campaign)))
+    UpStateSource(None, got.append, rejects.append).handle(
+        _json_msg(topics.guardian_state_topic("v"), contracts.build_state_event(state)))
+    UpStateSource(None, got.append, rejects.append).handle(_json_msg(topics.guardian_state_topic("v"), b"{}"))
+    assert got == [campaign, state] and len(rejects) == 1

@@ -40,11 +40,11 @@ Watch the topic from a terminal: `rom-up-monitor` (or `python -m rom_uprotocol.s
 |---|---|
 | `contract.py` | uEntity IDs, topic resources, signal payload `build_/parse_signal_msg`, heartbeat payload `build_/parse_heartbeat_msg` |
 | `config.py` | `uprotocol()`: authority, transport, Zenoh endpoints from env |
-| `uris.py` | `publisher_uri`, `battery_temp_topic`, `heartbeat_topic`, `guardian_uri` |
+| `uris.py` | `publisher_uri`, `battery_temp_topic`, `heartbeat_topic`, `guardian_uri`, `guardian_state_topic`, `campaign_event_topic` |
 | `transport/` | `make_transport(source)` + `register_transport(name, factory)`; `zenoh.py` = `ZenohTransport` |
 | `publisher.py` | `SignalPublisher` and `HeartbeatPublisher` (seq per component) with interceptor chain |
 | `faults.py` | `TransportFaults`: a controllable interceptor (drop, reorder, duplicate, delay) |
-| `subscriber.py` | `UpSignalSource`, `UpCellsSource`, `UpHeartbeatSource` / `HeartbeatSample`, `UpFaultSource` |
+| `subscriber.py` | `UpSignalSource`, `UpCellsSource`, `UpHeartbeatSource` / `HeartbeatSample`, `UpFaultSource`, `UpCampaignSource`, `UpStateSource` |
 
 ## Extension points (open for extension, closed for modification)
 
@@ -64,8 +64,10 @@ All payloads are `UPAYLOAD_FORMAT_JSON`; builders and parsers in `contract.py`.
 | `up://<UP_AUTHORITY>/1001/1/8004` heartbeats | client → guardian | `{"component":"databroker","status":"ok","seq":7,"ts_ms":…}` (`status`: `ok` / `down`; components: `uprotocol`, `databroker`, and the producers' `chip` / `adapter` / `simulator` forwarded from KUKSA) | `HEARTBEAT_STALE_MS` |
 | `up://<UP_AUTHORITY>/1001/1/8001` Max | client → monitors | `{"vss_path":"Vehicle.Powertrain.TractionBattery.Temperature.Max","value":47.2,"seq":7,"ts_ms":…,"source_ts_ms":…}` | `STALE_MS` |
 | `up://<UP_AUTHORITY>/1002/1/8003` faults | guardian → DFM reporter | `FaultEvent`: `{"code","stage":"FAILED"/"PASSED","ts_ms","cell","temp_c","cells","reason","seq","msg_id","run_id"}`, see [`services/dfm/README.md`](../../services/dfm/README.md) | none |
+| `up://<UP_AUTHORITY>/1002/1/8006` state | guardian → evidence collector | `StateEvent`: `{"state","previous","reason","ts_ms","temp_c","cell","cells","seq","msg_id","run_id"}` on every change and every second (`previous == state`); states include `MITIGATING` | none |
+| `up://<UP_AUTHORITY>/1003/1/8005` campaign | fault-injector → evidence collector | `CampaignEvent`: `{"event","run_id","ts_ms","seq","data"}`, `event` = `campaign_start` / `fault_injected` / `fault_cleared` / `fault_failed` / `campaign_end`, `data` = the runner's log fields | none |
 
-Zenoh keys follow up-spec, e.g. `up/rom-vehicle/1001/0/1/8002/{}/{}/{}/{}/{}`. `rom-up-monitor [--cells | --faults | --heartbeats]`
+Zenoh keys follow up-spec, e.g. `up/rom-vehicle/1001/0/1/8002/{}/{}/{}/{}/{}`. `rom-up-monitor [--cells | --faults | --heartbeats | --campaign | --state]`
 prints any of them.
 
 `seq` lets a consumer detect dropped / duplicated / reordered messages; the uProtocol message id
