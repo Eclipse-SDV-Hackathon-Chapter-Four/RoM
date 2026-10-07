@@ -6,10 +6,11 @@ export default function RecentEvents({ events }: { events: GuardianEvent[] }) {
   return (
     <section className="card events-card" aria-label="Recent events">
       <h2 className="card-title"><span className="icon"><ClockIcon /></span>Recent Events</h2>
+      <div className="events-scroll">
       <table className="events">
         <thead>
           <tr>
-            <th>Time (UTC)</th>
+            <th>Time</th>
             <th>State</th>
             <th>Reason</th>
             <th className="num">Temp (°C)</th>
@@ -26,6 +27,7 @@ export default function RecentEvents({ events }: { events: GuardianEvent[] }) {
           ))}
         </tbody>
       </table>
+      </div>
     </section>
   );
 }

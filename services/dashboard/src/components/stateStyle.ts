@@ -21,5 +21,6 @@ export const STATE_LABEL: Record<GuardianState, string> = {
 
 export const formatTemp = (value: number | null, digits = 1) => (value === null ? "--" : value.toFixed(digits));
 
-/** HH:MM:SS in UTC, so the screen does not depend on the viewer's time zone. */
-export const formatTime = (iso: string) => new Date(iso).toISOString().slice(11, 19);
+/** HH:MM:SS in the viewer's local time, so it matches the clock next to the screen. */
+export const formatTime = (iso: string | number) =>
+  new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });

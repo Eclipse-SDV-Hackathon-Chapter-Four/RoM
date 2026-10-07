@@ -5,21 +5,23 @@ export interface ScenarioInfo {
   label: string;
 }
 
-/** Only demo sources offer scenarios; a live source (OpenSOVD) simply leaves `scenarios` undefined. */
+/** Test-only helper offered by demo sources: jump the simulated stream to a situation. Live sources omit it. */
 export interface ScenarioSupport {
   list(): ScenarioInfo[];
-  current(): ScenarioId;
   select(id: ScenarioId): void;
 }
 
 /**
  * The only thing the React components know about where data comes from.
- * Implementations: MockDashboardDataSource now, OpenSovdDataSource later.
+ * Implementations: MockDashboardDataSource now (simulated stream), OpenSovdDataSource later.
  */
 export interface DashboardDataSource {
-  /** Short text for the UI, e.g. "mock data". */
+  /** Short text for the UI, e.g. "simulated telemetry". */
   readonly label: string;
-  /** Returns the current normalized snapshot. */
-  fetch(): Promise<DashboardData>;
+  /**
+   * Calls `onData` with a normalized snapshot now and again whenever new data arrives.
+   * How often, and whether by push or by polling, is the source's business. Returns an unsubscribe function.
+   */
+  subscribe(onData: (data: DashboardData) => void, onError?: (message: string) => void): () => void;
   readonly scenarios?: ScenarioSupport;
 }

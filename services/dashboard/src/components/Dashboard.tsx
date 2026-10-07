@@ -4,20 +4,15 @@ import { BatteryLogo } from "./icons";
 import GuardianStateCard from "./GuardianStateCard";
 import LastMessageCard from "./LastMessageCard";
 import RecentEvents from "./RecentEvents";
+import LiveStatus from "./LiveStatus";
 import ScenarioControls from "./ScenarioControls";
 import SensorStatusCard from "./SensorStatusCard";
 import SystemFlow from "./SystemFlow";
 import TemperatureCard from "./TemperatureCard";
 import TemperatureChart from "./TemperatureChart";
 
-interface Props {
-  source: DashboardDataSource;
-  /** 0 = no polling (mock). A live source would pass e.g. 2000. */
-  pollMs?: number;
-}
-
-export default function Dashboard({ source, pollMs = 0 }: Props) {
-  const { data, error, scenario, selectScenario } = useDashboardData(source, pollMs);
+export default function Dashboard({ source }: { source: DashboardDataSource }) {
+  const { data, error } = useDashboardData(source);
 
   return (
     <div className="page">
@@ -39,9 +34,10 @@ export default function Dashboard({ source, pollMs = 0 }: Props) {
         </div>
       </header>
 
-      {source.scenarios && scenario && (
-        <ScenarioControls scenarios={source.scenarios.list()} selected={scenario} onSelect={selectScenario} />
-      )}
+      <div className="demo-bar">
+        <LiveStatus label="Simulated telemetry" />
+        {source.scenarios && <ScenarioControls support={source.scenarios} />}
+      </div>
 
       {error && <div className="error-banner" role="alert">Data source error: {error}</div>}
 
@@ -51,7 +47,7 @@ export default function Dashboard({ source, pollMs = 0 }: Props) {
           <GuardianStateCard guardian={data.guardian} />
           <div className="side-stack">
             <SensorStatusCard sensor={data.sensor} />
-            <LastMessageCard message={data.message} sensor={data.sensor} />
+            <LastMessageCard message={data.message} sensor={data.sensor} updatedAt={data.timestamp} />
           </div>
           <TemperatureChart history={data.history} battery={data.battery} now={data.timestamp} />
           <RecentEvents events={data.events} />

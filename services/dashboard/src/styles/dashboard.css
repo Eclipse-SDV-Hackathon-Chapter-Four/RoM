@@ -55,7 +55,17 @@ h1, h2, p, dl, dd { margin: 0; }
 }
 
 /* ---------- scenario controls ---------- */
+.demo-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px; padding: 12px 26px 0; min-height: 50px; }
+.demo-bar .scenarios { padding: 0; }
+.live-status { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.live-status strong { letter-spacing: 0.6px; color: #6fe3a0; }
+.live-sub { color: var(--muted); }
+.live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 rgba(40, 199, 111, 0.6); animation: live-pulse 1.6s ease-out infinite; }
+@keyframes live-pulse { 70% { box-shadow: 0 0 0 9px rgba(40, 199, 111, 0); } 100% { box-shadow: 0 0 0 0 rgba(40, 199, 111, 0); } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
 .scenarios { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 26px 0; }
+.scenario-btn.toggle { color: var(--muted); }
+.updated { margin-left: auto; font-size: 12.5px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 .scenarios-label { color: var(--muted); font-size: 13px; margin-right: 6px; text-transform: uppercase; letter-spacing: 0.6px; }
 .scenario-btn {
   font: inherit;
@@ -155,7 +165,8 @@ strong.state-mitigating, strong.state-fault { color: var(--fg); background: none
 .kv dd.mono { font-size: 17px; align-self: center; }
 
 /* ---------- chart ---------- */
-.chart { width: 100%; height: auto; display: block; margin-top: 8px; }
+.chart-wrap { position: relative; aspect-ratio: 760 / 300; margin-top: 8px; }
+.chart { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .chart .grid-line { stroke: rgba(141, 160, 186, 0.14); stroke-width: 1; }
 .chart .axis { fill: #c3cfe2; font-size: 13px; }
 .chart .zone { font-size: 13.5px; font-weight: 500; }
@@ -210,6 +221,64 @@ strong.state-mitigating, strong.state-fault { color: var(--fg); background: none
 .flow-back code { color: #cfe6f7; }
 .flow-line-left::after { right: auto; left: -1px; border-left: 0; border-right: 8px solid #cfd9ea; }
 
+/* ---------- desktop: fit one viewport ----------
+   Enough width and height: the page is exactly one viewport tall, the chart/events row takes whatever is left
+   after the fixed-content rows, and the events list scrolls inside its card. Smaller screens scroll normally. */
+@media (min-width: 1200px) and (min-height: 780px) {
+  .page { display: flex; flex-direction: column; height: 100dvh; }
+  .header { padding: 10px 24px; align-items: center; }
+  .brand { gap: 14px; }
+  .brand svg { height: 40px; width: auto; }
+  .brand h1 { font-size: 26px; }
+  .subtitle { margin-top: 3px; font-size: 15px; }
+  .mode { font-size: 13px; line-height: 1.35; }
+  .mode p { margin-top: 5px; }
+  .mode-badge { padding: 4px 12px; font-size: 13px; }
+  .demo-bar { padding: 8px 24px 0; min-height: 0; }
+  .scenario-btn { padding: 4px 12px; font-size: 13px; }
+
+  .grid {
+    flex: 1;
+    min-height: 0;
+    grid-template-rows: auto minmax(180px, 1fr) auto;
+    gap: 14px;
+    padding: 12px 24px 16px;
+  }
+  .card { padding: 14px 18px; }
+  .card-title { font-size: 18px; gap: 10px; }
+  .card-title.small { font-size: 16px; }
+  .card.compact { padding: 10px 18px; }
+
+  .temp-value { font-size: 48px; margin: 4px 0 6px; }
+  .temp-unit { font-size: 40px; }
+  .gauge { padding-bottom: 24px; }
+  .gauge-track { height: 16px; }
+  .gauge-marker { height: 24px; top: -4px; }
+  .gauge-ticks { top: 22px; font-size: 13px; }
+  .card-note { margin-top: 6px; font-size: 12px; line-height: 1.4; }
+
+  .state-banner { margin: 14px 0 14px; padding: 14px 10px; font-size: 34px; }
+  .reason { font-size: 18px; }
+
+  .side-stack { gap: 14px; }
+  .sensor-status { margin-top: 6px; font-size: 20px; }
+  .dot { width: 14px; height: 14px; }
+  .kv { margin-top: 8px; gap: 3px 18px; font-size: 16px; }
+  .kv dd.mono { font-size: 15px; }
+
+  .chart-card, .events-card { display: flex; flex-direction: column; min-height: 0; }
+  .chart-wrap { aspect-ratio: auto; flex: 1; min-height: 0; }
+  .events-scroll { flex: 1; min-height: 0; overflow-y: auto; margin-top: 10px; }
+  .events { margin-top: 0; font-size: 14px; }
+  .events th { position: sticky; top: 0; background: #14203a; padding: 7px 8px; }
+  .events td { padding: 7px 8px; }
+
+  .flow-row { margin-top: 12px; }
+  .flow-node { padding: 8px 12px; font-size: 13px; }
+  .flow-node strong { font-size: 14px; }
+  .flow-feedback { margin-top: 10px; }
+}
+
 /* ---------- responsive ---------- */
 @media (max-width: 1100px) {
   .grid { grid-template-columns: 1fr 1fr; }
@@ -230,7 +299,7 @@ strong.state-mitigating, strong.state-fault { color: var(--fg); background: none
   .header { flex-direction: column; padding: 16px; }
   .grid { grid-template-columns: 1fr; padding: 14px 16px 22px; }
   .side-stack { grid-template-columns: 1fr; }
-  .scenarios { padding: 12px 16px 0; }
+  .demo-bar { padding: 12px 16px 0; }
   .temp-value { font-size: 56px; }
   .temp-unit { font-size: 46px; }
   .state-banner { font-size: 34px; }

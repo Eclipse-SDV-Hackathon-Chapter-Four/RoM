@@ -14,29 +14,39 @@ npm run build      # typecheck (tsc) + production build into dist/
 
 Without a local Node.js: `docker run --rm -it -p 5173:5173 -v "$PWD":/app -w /app node:22-alpine sh -c "npm install && npm run dev -- --host"`.
 
-## Demo scenarios
+## Live demo stream
 
-The buttons under the header (Normal, Warning, Critical, Sensor fault) switch between four snapshots in
-`src/data/mock-dashboard.json`. Each snapshot is a complete `DashboardData`, so temperature, Guardian state,
-sensor status, last message, chart and events all change together. Reasons and state sequences follow the real
-Guardian (for example `CRITICAL / too hot`, then `MITIGATING / cooling requested`, then `CRITICAL / mitigation failed`).
+The dashboard behaves like a live monitoring screen on **simulated telemetry**: `MockDashboardDataSource` publishes a
+new `DashboardData` every second (seq +1, latency 80..120 ms) from a deterministic, looping timeline
+(`src/data/mockTimeline.ts`, about 59 s per loop):
+
+MONITORING 31 → 37 °C, WARNING 38.2 → 43, CRITICAL / too hot, MITIGATING / cooling requested, MITIGATING /
+cooling in progress, CRITICAL / mitigation failed, cooling back through 44 → 41 → 37 → 34 to MONITORING, then a
+sensor-fault segment (messages stop, SENSOR_FAULT / stale signal, sensor OFFLINE) and recovery.
+
+States and reasons follow what the real Guardian produces for such a curve. Recent Events gets a row whenever the
+state or reason changes. Times are shown in the viewer's local time.
+
+"Demo controls" (collapsed by default, for testing only) jumps the stream to Normal, Warning, Critical or Sensor
+fault; the stream keeps running afterwards. The demo never needs it.
 
 ## Data boundary (how OpenSOVD plugs in later)
 
 ```
-React components  ->  useDashboardData(source)  ->  DashboardDataSource  ->  MockDashboardDataSource (now)
-                                                                         ->  OpenSovdDataSource (later)
+React components  ->  useDashboardData(source)  ->  DashboardDataSource.subscribe(cb)
+                                                      ->  MockDashboardDataSource (now)
+                                                      ->  OpenSovdDataSource (later)
 ```
 
 - `src/types/dashboard.ts`: the normalized `DashboardData` contract. Components only know this.
-- `src/data/DashboardDataSource.ts`: the interface (`fetch()`, optional `scenarios`).
-- `src/data/MockDashboardDataSource.ts`: serves the JSON snapshots.
+- `src/data/DashboardDataSource.ts`: the interface (`subscribe(onData, onError)`, optional `scenarios`).
+- `src/data/mockTimeline.ts` and `MockDashboardDataSource.ts`: the simulated stream.
 - `src/App.tsx`: the one place that chooses the source.
 
-To go live, add `src/data/OpenSovdDataSource.ts` that fetches the OpenSOVD JSON and maps it to `DashboardData`
-(that file is the only one that should parse OpenSOVD), then construct it in `App.tsx` and pass a poll interval to
-`<Dashboard pollMs={2000} />`. A live source leaves `scenarios` undefined, so the scenario buttons disappear.
-The components under `src/components/` stay unchanged.
+To go live, add `src/data/OpenSovdDataSource.ts` that polls (or streams) the OpenSOVD JSON, maps it to
+`DashboardData` (the only file that should parse OpenSOVD) and calls `onData` on every update, then construct it in
+`App.tsx`. A live source leaves `scenarios` undefined, so the demo controls disappear. The components under
+`src/components/` stay unchanged.
 
 ## Thresholds
 

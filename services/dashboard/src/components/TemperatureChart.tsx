@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from "react";
 import type { BatteryInfo, HistoryPoint } from "../types/dashboard";
 import { ChartIcon } from "./icons";
+import { formatTime } from "./stateStyle";
 
 interface Props {
   history: HistoryPoint[];
@@ -8,15 +10,32 @@ interface Props {
   now: string;
 }
 
-const W = 760;
-const H = 300;
 const M = { left: 48, right: 14, top: 12, bottom: 30 };
-const PW = W - M.left - M.right;
-const PH = H - M.top - M.bottom;
 
-const hhmm = (ms: number) => new Date(ms).toISOString().slice(11, 16);
+/** Smallest "round" tick spacing that gives at least four labels for the visible time span. */
+const TICK_STEPS_MS = [10_000, 20_000, 30_000, 60_000, 120_000, 300_000];
+const tickStep = (spanMs: number) => TICK_STEPS_MS.find((s) => spanMs / s <= 8) ?? TICK_STEPS_MS[TICK_STEPS_MS.length - 1];
 
 export default function TemperatureChart({ history, battery, now }: Props) {
+  // The SVG viewBox follows the container, so the chart fills whatever height the layout gives it
+  // and text keeps its real pixel size (no stretching).
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 760, h: 300 });
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setSize({ w: Math.round(width), h: Math.round(height) });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const W = size.w;
+  const H = size.h;
+  const PW = W - M.left - M.right;
+  const PH = H - M.top - M.bottom;
+
   const { warn_c, crit_c } = battery;
   const times = history.map((p) => Date.parse(p.timestamp));
   const t1 = Date.parse(now);
@@ -39,14 +58,15 @@ export default function TemperatureChart({ history, battery, now }: Props) {
   const yTicks: number[] = [];
   for (let v = Math.ceil(yMin / 10) * 10; v <= yMax; v += 10) yTicks.push(v);
   const xTicks: number[] = [];
-  const step = 120_000;
+  const step = tickStep(t1 - t0);
   for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) xTicks.push(t);
 
-  const signalLost = history.length > 0 && t1 - times[last] > 30_000;
+  const signalLost = history.length > 0 && t1 - times[last] > 3_000;
 
   return (
     <section className="card chart-card" aria-label="Temperature history">
       <h2 className="card-title"><span className="icon"><ChartIcon /></span>Temperature History</h2>
+      <div className="chart-wrap" ref={wrapRef}>
       <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img"
            aria-label={`Battery temperature over time with warning at ${warn_c} °C and critical at ${crit_c} °C`}>
         <defs>
@@ -69,7 +89,7 @@ export default function TemperatureChart({ history, battery, now }: Props) {
         {xTicks.map((t) => (
           <g key={t}>
             <line x1={x(t)} x2={x(t)} y1={M.top} y2={M.top + PH} className="grid-line" />
-            <text x={x(t)} y={H - 8} textAnchor="middle" className="axis">{hhmm(t)}</text>
+            <text x={x(t)} y={H - 8} textAnchor="middle" className="axis">{formatTime(t).slice(0, step < 60_000 ? 8 : 5)}</text>
           </g>
         ))}
 
@@ -91,6 +111,7 @@ export default function TemperatureChart({ history, battery, now }: Props) {
         )}
         <text transform={`translate(12 ${M.top + PH / 2}) rotate(-90)`} textAnchor="middle" className="axis">Temperature (°C)</text>
       </svg>
+      </div>
     </section>
   );
 }
