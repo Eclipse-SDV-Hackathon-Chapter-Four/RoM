@@ -41,8 +41,17 @@ state or reason changes, and a **diagnostic fault** row (`FAULT` / `CLEARED`, sc
 DFM fault edge that is not already a state row (cell faults and `cell_imbalance`). Hovering a row shows the real code,
 e.g. `battery_guardian.cell3.signal_stale`. Times are shown in the viewer's local time.
 
-"Demo controls" (collapsed by default, for testing only) jumps the stream to Normal, Warning, Critical, Cell faults
-or Stream loss; the stream keeps running afterwards. The demo never needs it.
+"Demo controls" (collapsed by default, mock only, never touches the real board) let you pick a **target** (Pack or one
+of C1-C4) and a **scenario** (Normal, Warning, Critical, Stale, Stuck, Out of range, Stream loss) and then resume the
+automatic loop with **Resume live**. They change simulated *inputs* only (`src/data/mockOverride.ts`): a cell heats up
+(+2 °C per tick to 40.5 / 47.5 °C), stops reporting, freezes at its last value, or reports 175 °C; Stream loss silences
+every cell. The mock Guardian then derives the status of each cell, Pack Max, the pack state and the fault codes, so
+e.g. C3 + Stale gives STALE on Cell 3 and a pack that keeps supervising the other three (never a global SENSOR_FAULT),
+C2 + Stuck takes the real 10 s to show STUCK, and Pack + Stream loss ends in SENSOR_FAULT. Overrides on different
+cells stack. Pack + Warning / Critical heats the current Pack Max cell, Pack + Stuck / Out of range means *all* cells
+(labelled "All stuck" / "All out of range"), and the nonsensical Pack + Stale and cell + Stream loss are disabled. A cell
+target also focuses that cell in Battery Cells, the chart and Recent Events; a pack target returns to the overview.
+While an override is active a "Mock override" badge stays visible even if the panel is collapsed.
 
 ## Data boundary (how OpenSOVD plugs in later)
 
@@ -57,13 +66,13 @@ React components  ->  useDashboardData(source)  ->  DashboardDataSource.subscrib
   `pack_max_c` / `pack_max_cell`. A real source maps the backend cell message
   `{"cells": {"1": 31.2, "2": 30.1, "4": 29.9}, "seq": 42, "ts_ms": ...}` to it: a cell id that is absent becomes a
   cell with `temperature_c: null` and the status the Guardian reports.
-- `src/data/DashboardDataSource.ts`: the interface (`subscribe(onData, onError)`, optional `scenarios`).
+- `src/data/DashboardDataSource.ts`: the interface (`subscribe(onData, onError)`, optional `demo` controls).
 - `src/data/mockTimeline.ts`, `mockGuardian.ts` and `MockDashboardDataSource.ts`: the simulated stream.
 - `src/App.tsx`: the one place that chooses the source.
 
 To go live, add `src/data/OpenSovdDataSource.ts` that polls (or streams) the OpenSOVD JSON, maps it to
 `DashboardData` (the only file that should parse OpenSOVD) and calls `onData` on every update, then construct it in
-`App.tsx`. A live source leaves `scenarios` undefined, so the demo controls disappear. The components under
+`App.tsx`. A live source leaves `demo` undefined, so the demo controls disappear. The components under
 `src/components/` stay unchanged.
 
 ## Thresholds

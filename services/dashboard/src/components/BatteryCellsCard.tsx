@@ -1,13 +1,21 @@
 import type { BatteryInfo } from "../types/dashboard";
 import { ThermometerIcon } from "./icons";
-import { CELL_STATUS_LABEL, formatTemp, tempTone } from "./stateStyle";
+import type { CellSelection } from "./selection";
+import { CELL_STATUS_LABEL, cellColor, formatTemp, tempTone } from "./stateStyle";
 
 /** Display range of the indicator only. It is not a limit and not related to the sensor plausibility bounds. */
 const SCALE_MIN = -40;
 const SCALE_MAX = 70;
 const pct = (v: number) => Math.min(100, Math.max(0, ((v - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100));
 
-export default function BatteryCellsCard({ battery }: { battery: BatteryInfo }) {
+interface Props {
+  battery: BatteryInfo;
+  selection: CellSelection;
+  /** Called with the cell id, or "ALL" when the selected tile is clicked again. */
+  onSelect: (s: CellSelection) => void;
+}
+
+export default function BatteryCellsCard({ battery, selection, onSelect }: Props) {
   const { cells, pack_max_c: packMax, pack_max_cell: packCell, warn_c, crit_c } = battery;
   const warnAt = pct(warn_c);
   const critAt = pct(crit_c);
@@ -17,13 +25,16 @@ export default function BatteryCellsCard({ battery }: { battery: BatteryInfo }) 
     <section className="card cells-card" aria-label="Battery cells">
       <h2 className="card-title"><span className="icon icon-red"><ThermometerIcon /></span>Battery Cells</h2>
 
-      <div className="cells" role="list">
+      <div className="cells" role="group" aria-label="Select a cell to focus the chart and events">
         {cells.map((c) => {
           const ok = c.status === "OK";
           const hottest = ok && c.id === packCell;
+          const selected = selection === c.id;
+          const secondary = selection !== "ALL" && !selected;
           return (
-            <div key={c.id} role="listitem"
-                 className={`cell ${ok ? tempTone(c.temperature_c, warn_c, crit_c) : "cell-fault"}${hottest ? " cell-hottest" : ""}`}>
+            <button key={c.id} type="button" aria-pressed={selected} onClick={() => onSelect(selected ? "ALL" : c.id)}
+                    style={{ "--cc": cellColor(c.id) } as React.CSSProperties}
+                    className={`cell ${ok ? tempTone(c.temperature_c, warn_c, crit_c) : "cell-fault"}${hottest && selection === "ALL" ? " cell-hottest" : ""}${selected ? " cell-selected" : ""}${secondary ? " cell-secondary" : ""}`}>
               <div className="cell-head">
                 <span className="cell-name">CELL {c.id}</span>
                 <span className={`cell-src src-${c.source.toLowerCase()}`} title={c.source === "HW" ? "Physical AZ3166 board" : "Simulator"}>
@@ -38,7 +49,7 @@ export default function BatteryCellsCard({ battery }: { battery: BatteryInfo }) 
                 {CELL_STATUS_LABEL[c.status]}
                 {hottest && <span className="cell-maxtag">MAX</span>}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -69,8 +80,7 @@ export default function BatteryCellsCard({ battery }: { battery: BatteryInfo }) 
       </div>
 
       <p className="card-note">
-        Demo thresholds: warning ≥ {warn_c} °C, critical ≥ {crit_c} °C, applied to the hottest valid cell.
-        A faulty cell is excluded from Pack Max.
+        Demo thresholds: warning ≥ {warn_c} °C, critical ≥ {crit_c} °C on the hottest valid cell. Faulty cells are excluded.
       </p>
     </section>
   );

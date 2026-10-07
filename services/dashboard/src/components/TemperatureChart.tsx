@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { BatteryInfo, HistoryPoint } from "../types/dashboard";
 import { ChartIcon } from "./icons";
+import ChartFocusBar from "./ChartFocusBar";
+import type { CellSelection } from "./selection";
 import { cellColor, formatTime } from "./stateStyle";
 
 interface Props {
@@ -8,6 +10,8 @@ interface Props {
   battery: BatteryInfo;
   /** Snapshot time: the right edge of the x axis, so a lost signal shows up as a gap. */
   now: string;
+  selection: CellSelection;
+  onShowAll: () => void;
 }
 
 const M = { left: 48, right: 14, top: 12, bottom: 30 };
@@ -16,7 +20,7 @@ const M = { left: 48, right: 14, top: 12, bottom: 30 };
 const TICK_STEPS_MS = [10_000, 20_000, 30_000, 60_000, 120_000, 300_000];
 const tickStep = (spanMs: number) => TICK_STEPS_MS.find((s) => spanMs / s <= 8) ?? TICK_STEPS_MS[TICK_STEPS_MS.length - 1];
 
-export default function TemperatureChart({ history, battery, now }: Props) {
+export default function TemperatureChart({ history, battery, now, selection, onShowAll }: Props) {
   // The SVG viewBox follows the container, so the chart fills whatever height the layout gives it
   // and text keeps its real pixel size (no stretching).
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -74,8 +78,11 @@ export default function TemperatureChart({ history, battery, now }: Props) {
   for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) if (x(t) <= W - M.right - 24) xTicks.push(t);
 
   const signalLost = history.length > 0 && t1 - times[last] > 3_000;
-  // Draw the hottest valid cell last (on top) and thicker, so the pack maximum can be followed by eye.
-  const order = [...cells].sort((a, b) => Number(a.id === hottest) - Number(b.id === hottest));
+  // Emphasised cell: the selected one, or in the pack overview the hottest valid cell (Pack Max). It is drawn last,
+  // on top, and thicker; with a selection the other lines stay visible but fade.
+  const focus = selection === "ALL" ? null : selection;
+  const emphasised = focus ?? hottest;
+  const order = [...cells].sort((a, b) => Number(a.id === emphasised) - Number(b.id === emphasised));
 
   return (
     <section className="card chart-card" aria-label="Temperature history">
@@ -89,9 +96,10 @@ export default function TemperatureChart({ history, battery, now }: Props) {
               <span className="legend-src">{c.source}</span>
             </li>
           ))}
-          <li className="legend-note"><span className="legend-thick" />Thick line = Pack Max</li>
+          <li className="legend-note"><span className="legend-thick" />{focus === null ? "Thick line = Pack Max" : `Thick line = Cell ${focus}`}</li>
         </ul>
       </h2>
+      <ChartFocusBar battery={battery} selection={selection} onShowAll={onShowAll} />
       <div className="chart-wrap" ref={wrapRef}>
       <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img"
            aria-label={`Temperature of the four battery cells over time with warning at ${warn_c} °C and critical at ${crit_c} °C`}>
@@ -114,20 +122,25 @@ export default function TemperatureChart({ history, battery, now }: Props) {
 
         <line x1={M.left} x2={W - M.right} y1={y(warn_c)} y2={y(warn_c)} stroke="#f5b82e" strokeDasharray="5 4" />
         <line x1={M.left} x2={W - M.right} y1={y(crit_c)} y2={y(crit_c)} stroke="#e5484d" strokeDasharray="5 4" />
-        <text x={M.left + 10} y={y(crit_c) - 8} className="zone zone-critical">CRITICAL (≥ {crit_c} °C)</text>
-        <text x={M.left + 10} y={y(warn_c) - 8} className="zone zone-warning">WARNING (≥ {warn_c} °C)</text>
-        <text x={M.left + 10} y={y(yMin) - 8} className="zone zone-normal">NORMAL</text>
+        {PH >= 100 && ( // on a very short chart the zone names would collide; the dashed threshold lines remain
+          <>
+            <text x={M.left + 10} y={y(crit_c) - 8} className="zone zone-critical">CRITICAL (≥ {crit_c} °C)</text>
+            <text x={M.left + 10} y={y(warn_c) - 8} className="zone zone-warning">WARNING (≥ {warn_c} °C)</text>
+            <text x={M.left + 10} y={y(yMin) - 8} className="zone zone-normal">NORMAL</text>
+          </>
+        )}
 
         {order.map((c) => {
           const d = pathFor(c.id);
-          const isMax = c.id === hottest;
+          const isMax = c.id === emphasised;
+          const dim = focus !== null && c.id !== focus;
           const tail = last >= 0 ? history[last].cells[c.id] ?? null : null;
           return (
             <g key={c.id}>
-              {d && <path d={d} fill="none" stroke={cellColor(c.id)} strokeWidth={isMax ? 3.4 : 1.8}
-                          strokeLinejoin="round" strokeLinecap="round" opacity={isMax ? 1 : 0.85} />}
+              {d && <path d={d} fill="none" stroke={cellColor(c.id)} strokeWidth={isMax ? 3.4 : dim ? 1.4 : 1.8}
+                          strokeLinejoin="round" strokeLinecap="round" opacity={isMax ? 1 : dim ? 0.4 : 0.85} />}
               {tail !== null && (
-                <circle cx={x(times[last])} cy={y(tail)} r={isMax ? 5 : 3.5} fill={cellColor(c.id)}
+                <circle cx={x(times[last])} cy={y(tail)} r={isMax ? 5 : 3.5} fill={cellColor(c.id)} opacity={dim ? 0.5 : 1}
                         stroke={isMax ? "#fff" : "none"} strokeWidth="1.5" />
               )}
             </g>

@@ -1,14 +1,7 @@
-import type { DashboardData, ScenarioId } from "../types/dashboard";
-import type { DashboardDataSource, ScenarioInfo, ScenarioSupport } from "./DashboardDataSource";
+import type { DashboardData, DemoScenario, DemoTarget } from "../types/dashboard";
+import type { DashboardDataSource, DemoControls } from "./DashboardDataSource";
+import { unsupportedReason } from "./mockOverride";
 import { TimelineEngine } from "./mockTimeline";
-
-const SCENARIOS: ScenarioInfo[] = [
-  { id: "NORMAL", label: "Normal" },
-  { id: "WARNING", label: "Warning" },
-  { id: "CRITICAL", label: "Critical" },
-  { id: "CELL_FAULT", label: "Cell faults" },
-  { id: "STREAM_LOSS", label: "Stream loss" },
-];
 
 /**
  * Simulated live telemetry: publishes a new snapshot every `tickMs` from a deterministic, looping timeline.
@@ -26,11 +19,15 @@ export class MockDashboardDataSource implements DashboardDataSource {
     this.latest = this.engine.step(new Date());
   }
 
-  readonly scenarios: ScenarioSupport = {
-    list: () => SCENARIOS,
-    select: (id: ScenarioId) => {
-      this.engine.jumpTo(id);
-      this.publish(); // show the new situation immediately instead of waiting for the next tick
+  readonly demo: DemoControls = {
+    unsupported: unsupportedReason,
+    apply: (target: DemoTarget, scenario: DemoScenario) => {
+      this.engine.applyDemo(target, scenario);
+      this.publish(); // show the effect immediately instead of waiting for the next tick
+    },
+    resume: () => {
+      this.engine.resume();
+      this.publish();
     },
   };
 

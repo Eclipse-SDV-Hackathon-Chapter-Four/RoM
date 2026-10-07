@@ -26,6 +26,14 @@ export interface CellInfo {
   temperature_c: number | null;
   status: CellStatus;
   source: CellSource;
+  /** Last trustworthy reading, kept while the cell is faulty. null if it never had one. */
+  last_valid_c: number | null;
+  /** When a reading for this cell last reached the Guardian (ISO 8601). null if never. */
+  last_update: string | null;
+  /** True when the cell takes part in Pack Max; false for every cell whose status is not OK. */
+  in_pack: boolean;
+  /** Active DFM diagnostic code for this cell, e.g. battery_guardian.cell3.signal_stale. null when healthy. */
+  fault_code: string | null;
 }
 
 export interface BatteryInfo {
@@ -114,6 +122,18 @@ export interface DashboardData {
   message: MessageInfo;
   history: HistoryPoint[];
   events: GuardianEvent[]; // newest first
+  /** Mock sources only: set while a manual override is in force. Real sources leave it out. */
+  demo_override?: DemoOverrideInfo | null;
 }
 
-export type ScenarioId = "NORMAL" | "WARNING" | "CRITICAL" | "CELL_FAULT" | "STREAM_LOSS";
+/** What a demo control acts on: one cell, or the pack / whole stream. Mock sources only. */
+export type DemoTarget = "PACK" | 1 | 2 | 3 | 4;
+export type DemoScenario = "NORMAL" | "WARNING" | "CRITICAL" | "STALE" | "STUCK" | "OUT_OF_RANGE" | "STREAM_LOSS";
+
+/** A manual override is active on a mock source: the stream is driven by the controls instead of the demo loop. */
+export interface DemoOverrideInfo {
+  /** Short text for a badge, e.g. "C3 Stale" or "Stream loss". */
+  label: string;
+  /** Every target/scenario pair currently in force, so the controls can highlight them. */
+  active: { target: DemoTarget; scenario: DemoScenario }[];
+}

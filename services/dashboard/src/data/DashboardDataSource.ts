@@ -1,14 +1,16 @@
-import type { DashboardData, ScenarioId } from "../types/dashboard";
+import type { DashboardData, DemoScenario, DemoTarget } from "../types/dashboard";
 
-export interface ScenarioInfo {
-  id: ScenarioId;
-  label: string;
-}
-
-/** Test-only helper offered by demo sources: jump the simulated stream to a situation. Live sources omit it. */
-export interface ScenarioSupport {
-  list(): ScenarioInfo[];
-  select(id: ScenarioId): void;
+/**
+ * Presentation / test helper offered by mock sources only: push per-cell INPUTS (heat a cell, drop it, freeze it, make it
+ * implausible) or cut the whole stream. The Guardian logic still decides every state, status and fault code from those
+ * inputs. Live sources omit it.
+ */
+export interface DemoControls {
+  /** null when the combination is supported, otherwise the reason it is not (used as a tooltip). */
+  unsupported(target: DemoTarget, scenario: DemoScenario): string | null;
+  apply(target: DemoTarget, scenario: DemoScenario): void;
+  /** Drop every manual override and go back to the automatic demo loop. */
+  resume(): void;
 }
 
 /**
@@ -23,5 +25,5 @@ export interface DashboardDataSource {
    * How often, and whether by push or by polling, is the source's business. Returns an unsubscribe function.
    */
   subscribe(onData: (data: DashboardData) => void, onError?: (message: string) => void): () => void;
-  readonly scenarios?: ScenarioSupport;
+  readonly demo?: DemoControls;
 }

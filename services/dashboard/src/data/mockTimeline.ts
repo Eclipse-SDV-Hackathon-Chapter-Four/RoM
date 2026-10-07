@@ -1,11 +1,12 @@
 import type {
   BatteryInfo,
+  DemoScenario,
+  DemoTarget,
   CellInfo,
   CellStatus,
   DashboardData,
   GuardianEvent,
   HistoryPoint,
-  ScenarioId,
   SourceInfo,
 } from "../types/dashboard";
 import {
@@ -20,6 +21,7 @@ import {
   WARN_C,
   faultReason,
 } from "./mockGuardian";
+import { ManualOverride, saneC } from "./mockOverride";
 
 /**
  * Deterministic, loopable demo stream of a 4-cell pack. One row = one simulated cell message; a null entry is a cell
@@ -29,7 +31,6 @@ import {
  */
 type Row = (number | null)[];
 interface Segment {
-  scenario: ScenarioId | null;
   rows: Row[];
 }
 
@@ -65,20 +66,18 @@ const wiggle = (base: number, n: number) => Array.from({ length: n }, (_, k) => 
 
 const SEGMENTS: Segment[] = [
   // 1. Normal operation, cell 1 warms up on its own
-  { scenario: "NORMAL", rows: rows([31.0, 31.4, 31.9, 32.3, 32.9, 33.4, 34.0, 34.6, 35.3, 36.0, 36.6, 37.2], ramp(30.8, 32.4, 12)) },
+  { rows: rows([31.0, 31.4, 31.9, 32.3, 32.9, 33.4, 34.0, 34.6, 35.3, 36.0, 36.6, 37.2], ramp(30.8, 32.4, 12)) },
   // 2. Cell 1 crosses 38 °C -> WARNING
-  { scenario: "WARNING", rows: rows([38.2, 39.0, 39.5, 40.3, 41.0, 41.9, 43.0], ramp(32.6, 34.0, 7)) },
+  { rows: rows([38.2, 39.0, 39.5, 40.3, 41.0, 41.9, 43.0], ramp(32.6, 34.0, 7)) },
   // 3. Cell 1 crosses 45 °C -> CRITICAL "too hot" -> MITIGATING (requested, in progress) -> CRITICAL "mitigation failed"
   {
-    scenario: "CRITICAL",
     rows: rows([45.2, 46.0, 46.6, 47.1, 47.5, 47.9, 48.2, 48.4, 48.6, 48.4, 47.0, 45.5, 44.0, 41.0], ramp(34.4, 36.5, 14)),
   },
   // 4. Cooling: pack drops below 38 °C -> MONITORING
-  { scenario: null, rows: rows([39.5, 38.6, 37.0, 35.5, 34.0, 33.0, 32.2, 31.8, 31.5, 31.3, 31.1, 31.0], ramp(36.0, 31.0, 12)) },
+  { rows: rows([39.5, 38.6, 37.0, 35.5, 34.0, 33.0, 32.2, 31.8, 31.5, 31.3, 31.1, 31.0], ramp(36.0, 31.0, 12)) },
   // 5. Single-cell sensor faults. The pack stays on the healthy cells and never becomes SENSOR_FAULT.
   //    cell 2 frozen (k 0-14), cell 3 drops out of the message (k 4-12), cell 4 reads 175 °C (k 16-19)
   {
-    scenario: "CELL_FAULT",
     rows: (() => {
       let frozen: number | undefined;
       return rows(wiggle(31.3, 22), Array(22).fill(31.2), (k, i, v) => {
@@ -90,23 +89,14 @@ const SEGMENTS: Segment[] = [
     })(),
   },
   // 6. Whole stream lost: nothing arrives. After 2 s the Guardian can trust no cell -> SENSOR_FAULT "stale signal"
-  { scenario: "STREAM_LOSS", rows: Array.from({ length: 8 }, (): Row => Array(N_CELLS).fill(null)) },
+  { rows: Array.from({ length: 8 }, (): Row => Array(N_CELLS).fill(null)) },
   // 7. Recovery
-  { scenario: null, rows: rows(wiggle(31.0, 6), Array(6).fill(31.0)) },
+  { rows: rows(wiggle(31.0, 6), Array(6).fill(31.0)) },
 ];
 
 const FLAT: Row[] = SEGMENTS.flatMap((s) => s.rows);
-const SEGMENT_START: Partial<Record<ScenarioId, number>> = {};
-{
-  let at = 0;
-  for (const seg of SEGMENTS) {
-    if (seg.scenario && SEGMENT_START[seg.scenario] === undefined) SEGMENT_START[seg.scenario] = at;
-    at += seg.rows.length;
-  }
-}
-
 const HISTORY_POINTS = 120;
-const MAX_EVENTS = 24;
+const MAX_EVENTS = 40;
 const DEVICE_ID = "az3166-01";
 const BOARD_CELLS = [1];
 const SIM_CELLS = [2, 3, 4];
@@ -129,6 +119,11 @@ export class TimelineEngine {
   private lastKey = "";
   private nextId = 1;
   private lastReported: number[] = [1, 2, 3, 4];
+  private manual: ManualOverride | null = null;
+  private lastVal: (number | null)[] = Array(N_CELLS).fill(null); // last value each cell reported
+  private lastSane: (number | null)[] = Array(N_CELLS).fill(null); // last plausible one (start of a cool-down)
+  private lastValid: Record<number, number | null> = {};
+  private lastUpdate: Record<number, string> = {};
   private history: HistoryPoint[] = [];
   private events: GuardianEvent[] = [];
 
@@ -142,8 +137,14 @@ export class TimelineEngine {
       const msg: Record<number, number> = {};
       cells.forEach((v, c) => (msg[c + 1] = v));
       this.guardian.update(this.clock, msg);
+      const ts = new Date(now.getTime() - i * tickMs).toISOString();
+      for (const c of Object.keys(msg).map(Number)) {
+        this.lastValid[c] = msg[c];
+        this.lastUpdate[c] = ts;
+        this.lastVal[c - 1] = this.lastSane[c - 1] = msg[c];
+      }
       this.history.push({
-        timestamp: new Date(now.getTime() - i * tickMs).toISOString(),
+        timestamp: ts,
         cells: { ...msg },
         pack_max_c: this.guardian.packMax().temp,
       });
@@ -158,15 +159,32 @@ export class TimelineEngine {
     });
   }
 
-  /** Jump the stream to the start of a situation (demo controls only). */
-  jumpTo(id: ScenarioId): void {
-    this.index = SEGMENT_START[id] ?? 0;
+  /** Manual override from the demo controls: from now on the cell values come from the controls, not the loop. */
+  applyDemo(target: DemoTarget, scenario: DemoScenario): void {
+    this.manual ??= new ManualOverride();
+    this.manual.apply(target, scenario, this.lastVal, this.guardian.packMax().cell);
+  }
+
+  /** Drop the override and restart the automatic loop from its calm beginning. */
+  resume(): void {
+    this.manual = null;
+    this.index = 0;
   }
 
   /** Advances one message period and returns the resulting snapshot. */
   step(now: Date): DashboardData {
-    const row = FLAT[this.index];
-    this.index = (this.index + 1) % FLAT.length;
+    let row: Row;
+    if (this.manual) {
+      row = this.manual.row(this.lastVal, this.lastSane);
+    } else {
+      row = FLAT[this.index];
+      this.index = (this.index + 1) % FLAT.length;
+    }
+    row.forEach((v, i) => {
+      if (v === null) return;
+      this.lastVal[i] = v;
+      if (saneC(v)) this.lastSane[i] = v;
+    });
     this.clock += this.dt;
     const timestamp = now.toISOString();
 
@@ -188,12 +206,20 @@ export class TimelineEngine {
 
     const cells: CellInfo[] = [];
     for (let c = 1; c <= N_CELLS; c++) {
+      if (c in msg) this.lastUpdate[c] = timestamp;
       const status = this.statusOf(c);
+      if (status === "OK") this.lastValid[c] = g.cells[c].value;
+      // a cell's own diagnostic code; during a whole-stream loss the pack-level signal_stale explains every cell
+      const code = Object.keys(g.faults).find((k) => g.faults[k] === c && k.includes(`.cell${c}.`)) ?? (g.staleStream ? FAULT_SIGNAL_STALE : null);
       cells.push({
         id: c,
         temperature_c: status === "OK" ? g.cells[c].value : null,
         status,
         source: BOARD_CELLS.includes(c) ? "HW" : "SIM",
+        last_valid_c: this.lastValid[c] ?? null,
+        last_update: this.lastUpdate[c] ?? null,
+        in_pack: status === "OK",
+        fault_code: status === "OK" ? null : code,
       });
     }
 
@@ -243,6 +269,7 @@ export class TimelineEngine {
       message: { seq: this.seq, latency_ms: this.latency, cells_reported: [...this.lastReported], total_cells: N_CELLS },
       history: [...this.history],
       events: [...this.events],
+      demo_override: this.manual ? this.manual.info() : null,
     };
   }
 
