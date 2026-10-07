@@ -7,7 +7,7 @@ DC = $(DC_BIN) -f infra/docker-compose.yml
 VENV = .venv
 PY = $(VENV)/bin/python
 
-.PHONY: help up down logs kuksa sim sim-up guardian adapter hw images venv sim-local test-local shell test
+.PHONY: help up down logs kuksa sim sim-up guardian adapter hw sovd sovd-faults images venv sim-local test-local shell test
 
 help:   ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -41,6 +41,12 @@ hw:     ## hardware run: AZ3166 -> mosquitto -> adapter -> databroker -> vss-upr
 	$(DC) --profile tools stop simulator
 	$(DC) --profile tools up -d --build databroker mosquitto adapter vss-uprotocol-client guardian
 	$(DC) --profile tools logs -f adapter guardian
+
+sovd:   ## DFM + Eclipse OpenSOVD server in the background (SOVD REST on http://localhost:7690/sovd)
+	$(DC) --profile tools --profile todo up -d --build dfm opensovd
+
+sovd-faults: ## battery_guardian faults from the DFM over SOVD (GET /sovd/v1/apps/battery_guardian/faults)
+	@curl -sf http://localhost:7690/sovd/v1/apps/battery_guardian/faults | python3 -m json.tool
 
 images: ## build the service images localhost/rom/<service>:dev (ready for podman / Ankaios)
 	$(DC) --profile tools --profile todo build vss-uprotocol-client guardian fault-injector dfm opensovd evidence-collector

@@ -6,6 +6,9 @@
 #   docker compose -f infra/docker-compose.yml run --rm kuksa-client         # kuksa-client shell
 #   docker compose -f infra/docker-compose.yml run --rm dev bash             # shell in the venv
 #   docker compose -f infra/docker-compose.yml run --rm dev pytest            # tests
+# iceoryx2 mounts shared by dfm and opensovd (see the iceoryx2 volumes at the bottom).
+x-iceoryx2: &iceoryx2 [iceoryx2-shm:/dev/shm, iceoryx2:/tmp/iceoryx2]
+
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -78,6 +81,17 @@ services:
       MQTT_HOST: mosquitto             # display command (rom/actuator/display/cmd) goes out over MQTT
     depends_on: [vss-uprotocol-client, mosquitto]
 
+  opensovd:
+    profiles: ["tools"]          # SOVD REST: http://localhost:7690/sovd/v1/apps/battery_guardian/faults (DFM via iceoryx2)
+    build: {context: .., dockerfile: services/opensovd/Dockerfile}
+    image: localhost/rom/opensovd:dev
+    restart: on-failure
+    ports: ["7690:7690"]
+    volumes: *iceoryx2                 # same iceoryx2 shm + files as the DFM; same user too (iceoryx2 files are owner-only)
+    environment:
+      SOVD_DFM_APPS: battery_guardian  # DFM entity path = fault catalog id
+    depends_on: [dfm]
+
   # --- TODO placeholders: images build and start, log "not_implemented" and exit ---
   fault-injector:
     profiles: ["todo"]
@@ -88,11 +102,7 @@ services:
     profiles: ["todo"]
     build: {context: .., dockerfile: services/dfm/Dockerfile}
     image: localhost/rom/dfm:dev
-
-  opensovd:
-    profiles: ["todo"]
-    build: {context: .., dockerfile: services/opensovd/Dockerfile}
-    image: localhost/rom/opensovd:dev
+    volumes: *iceoryx2                 # iceoryx2 shared memory + service files, shared with opensovd
 
   evidence-collector:
     profiles: ["todo"]
@@ -112,3 +122,11 @@ services:
 
 volumes:
   kuksa-history:
+  # iceoryx2 between dfm and opensovd: /dev/shm (shared memory) and /tmp/iceoryx2 (service/node files)
+  # must live and die together, so both are tmpfs volumes mounted into both containers. A shared IPC
+  # namespace (ipc: service:dfm) plus a persistent volume breaks on a DFM restart: the restart gets a
+  # fresh /dev/shm while the old service files stay -> ServiceInCorruptedState.
+  iceoryx2-shm:
+    driver_opts: {type: tmpfs, device: tmpfs}
+  iceoryx2:
+    driver_opts: {type: tmpfs, device: tmpfs}
