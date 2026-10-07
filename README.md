@@ -337,9 +337,9 @@ flowchart LR
 - [x] Heartbeats from the uProtocol link, the KUKSA databroker, the adapter / simulator and the physical chip; the guardian names the failing component (DFM code for the root cause)
 - [x] Publish state and mitigation over uProtocol (`up://rom-vehicle/1002/1/8006`, on every change and every second)
 - [ ] The guardian's own outgoing heartbeat over uProtocol
-- [ ] Firmware heartbeat from the AZ3166 itself (independent of the sensor read; needs a re-flash)
+- [x] AZ3166 liveness heartbeat without a re-flash: the adapter turns the board's telemetry (1.5 s timeout) and its MQTT Last Will (`offline`) into the `chip` heartbeat; the guardian supervises it (`chip silent` → `SENSOR_FAULT`, DTC `chip_silent`, required in `make hw`), and the board watches the guardian back (`G:NO LINK` after 5 s)
 - [ ] Detect duplicate / reordered messages and implausible rate of change
-- [ ] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event
+- [x] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event: sender (`published`), transport faults (`transport_fault`), guardian, DFM (`fault_msg_id`), OpenSOVD environment data, evidence record
 
 #### 4. Diagnostics
 - [x] DFM fault records for every faulted scenario (fault-lib `dfm_bin`, catalog `battery_guardian`, see `services/dfm`)

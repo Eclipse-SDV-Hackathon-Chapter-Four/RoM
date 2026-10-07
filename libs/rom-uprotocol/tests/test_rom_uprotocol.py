@@ -13,6 +13,7 @@ pytest.importorskip("uprotocol")
 from uprotocol.communication.upayload import UPayload  # noqa: E402
 from uprotocol.transport.builder.umessagebuilder import UMessageBuilder  # noqa: E402
 from uprotocol.uri.serializer.uriserializer import UriSerializer  # noqa: E402
+from uprotocol.uuid.serializer.uuidserializer import UuidSerializer  # noqa: E402
 from uprotocol.v1.uattributes_pb2 import UMessageType, UPayloadFormat  # noqa: E402
 from uprotocol.v1.ucode_pb2 import UCode  # noqa: E402
 from uprotocol.v1.ustatus_pb2 import UStatus  # noqa: E402
@@ -101,6 +102,13 @@ def test_publisher_builds_publish_messages_with_json_payload_and_seq():
     msg = contracts.parse_signal_msg(sent[1].payload)
     assert (msg.value, msg.seq, msg.source_ts_ms) == (51.0, 2, 222)
     assert [e["event"] for e in events()] == ["published", "published"]
+
+
+def test_published_logs_the_uprotocol_msg_id_the_subscriber_sees():
+    sent = []
+    pub, events = make_publisher(lambda m: sent.append(m) or UStatus(code=UCode.OK))
+    pub.publish(VSS_PATH, 50.0, 0)
+    assert events()[-1]["msg_id"] == UuidSerializer.serialize(sent[0].attributes.id)
 
 
 def test_publisher_logs_failed_send_and_keeps_going():

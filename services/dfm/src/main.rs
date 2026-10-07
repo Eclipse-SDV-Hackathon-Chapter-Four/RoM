@@ -119,13 +119,14 @@ impl Bridge {
         Bridge { _api: api, path, reporters }
     }
 
-    fn handle(&mut self, payload: &[u8]) {
+    /// fault_msg_id: the uProtocol id of the fault-event message (the guardian logs it as `published.msg_id`).
+    fn handle(&mut self, payload: &[u8], fault_msg_id: Option<&str>) {
         let Event { code, stage, env, run_id, ts_ms } = match parse_event(payload) {
             Ok(e) => e,
-            Err(reason) => return log("rejected", json!({"reason": reason})),
+            Err(reason) => return log("rejected", json!({"reason": reason, "fault_msg_id": fault_msg_id})),
         };
         let Some(reporter) = self.reporters.get_mut(&code) else {
-            return log("rejected", json!({"reason": "unknown_code", "code": code}));
+            return log("rejected", json!({"reason": "unknown_code", "code": code, "fault_msg_id": fault_msg_id}));
         };
         let mut record = reporter.create_record(stage);
         for (k, v) in &env {
@@ -139,10 +140,11 @@ impl Bridge {
             Ok(()) => {
                 // write latency for the evidence collector: guardian edge (ts_ms) -> handed to the DFM
                 let latency_ms = ts_ms.map(|t| now_ms() as i128 - t as i128);
-                log("fault_record", json!({"code": code, "stage": stage, "run_id": run_id,
+                log("fault_record", json!({"code": code, "stage": stage, "run_id": run_id, "fault_msg_id": fault_msg_id,
                                            "latency_ms": latency_ms, "env": env_json(&env)}))
             }
-            Err(e) => log("publish_failed", json!({"code": code, "stage": stage, "run_id": run_id, "error": format!("{e:?}")})),
+            Err(e) => log("publish_failed", json!({"code": code, "stage": stage, "run_id": run_id,
+                                                   "fault_msg_id": fault_msg_id, "error": format!("{e:?}")})),
         }
         // ponytail: the DFM polls every 10 ms and its iceoryx2 subscriber buffer is tiny, so a burst
         // (replay, or Passed+Failed in one tick) loses records; pace them. Raise the buffer in fault-lib to drop this.
@@ -154,14 +156,16 @@ fn env_json(env: &[(&str, String)]) -> Value {
     env.iter().map(|(k, v)| ((*k).to_string(), Value::String(v.clone()))).collect::<serde_json::Map<_, _>>().into()
 }
 
-/// Hands every payload to the thread that owns the Bridge (fault-lib is sync, Zenoh calls back on its own threads).
-struct Forward(mpsc::Sender<Vec<u8>>);
+/// Hands every payload + its uProtocol message id to the thread that owns the Bridge (fault-lib is sync, Zenoh
+/// calls back on its own threads).
+struct Forward(mpsc::Sender<(Vec<u8>, Option<String>)>);
 
 #[async_trait]
 impl UListener for Forward {
     async fn on_receive(&self, msg: UMessage) {
+        let id = msg.attributes.as_ref().and_then(|a| a.id.as_ref()).map(|id| id.to_hyphenated_string());
         if let Some(payload) = msg.payload {
-            let _ = self.0.send(payload.to_vec());
+            let _ = self.0.send((payload.to_vec(), id));
         }
     }
 }
@@ -198,8 +202,8 @@ fn report(mut bridge: Bridge) {
         transport
     });
     log("subscribed", json!({"topic": topic.to_uri(true)}));
-    for payload in rx {
-        bridge.handle(&payload);
+    for (payload, id) in rx {
+        bridge.handle(&payload, id.as_deref());
     }
 }
 
@@ -235,7 +239,7 @@ fn main() {
             let file = args.get(1).expect("usage: rom-dfm replay <events.jsonl>");
             let mut bridge = Bridge::connect(&catalog);
             for line in fs::read_to_string(file).expect("read events").lines().filter(|l| !l.is_empty()) {
-                bridge.handle(line.as_bytes());
+                bridge.handle(line.as_bytes(), None);
             }
             // ponytail: fixed wait for the IPC worker to flush, poll the DFM if replays grow large
             thread::sleep(Duration::from_secs(1));
