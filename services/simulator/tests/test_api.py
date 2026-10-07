@@ -77,7 +77,7 @@ def test_run_sets_run_id_seed_clears_faults_and_restarts(env):
     server, faults, session, out = env
     faults.add("dropout")
     assert call(server, "POST", "/run", {"run_id": "camp-1", "seed": 42}) == (200, {"run_id": "camp-1", "seed": 42})
-    assert faults.active() == [] and session.seed == 42 and session.take_restart()
+    assert faults.active() == [] and session.seed == 42 and session.take_restart() == {}
     assert events(out)[-1]["run_id"] == "camp-1"
 
 
@@ -92,3 +92,17 @@ def test_state_reports_what_the_loop_published(env):
     session.publish(cells={1: 40.0}, max_c=40.0, stalled=False, source_time_s=1.0, faults=[])
     status, state = call(server, "GET", "/state")
     assert status == 200 and state["run_id"] == "r0" and state["seed"] == 3 and state["max_c"] == 40.0
+
+
+def test_run_passes_wave_settings_to_the_loop(env):
+    server, _, session, _ = env
+    body = {"run_id": "r", "seed": 1, "min_c": 25, "max_c": 32, "period_s": 60}
+    assert call(server, "POST", "/run", body) == (200, {"run_id": "r", "seed": 1, "min_c": 25.0, "max_c": 32.0, "period_s": 60.0})
+    assert session.take_restart() == {"min_c": 25.0, "max_c": 32.0, "period_s": 60.0}
+    assert session.take_restart() is None
+
+
+@pytest.mark.parametrize("bad", [{"min_c": 30, "max_c": 20}, {"min_c": 30}, {"period_s": 0}, {"max_c": "hot", "min_c": 1}])
+def test_run_rejects_bad_wave_settings(env, bad):
+    server, _, session, _ = env
+    assert call(server, "POST", "/run", bad)[0] == 422 and session.take_restart() is None

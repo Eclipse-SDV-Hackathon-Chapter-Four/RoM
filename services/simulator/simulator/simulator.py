@@ -36,17 +36,21 @@ class Session:
         self.seed = seed
         self.run_id = run_id
         self._restart = False
+        self._wave: dict = {}
         self._state: dict = {}
 
-    def restart(self, seed: int, run_id: Optional[str]) -> None:
-        """New run: the loop starts the wave over at t=0 with this seed."""
+    def restart(self, seed: int, run_id: Optional[str], wave: Optional[dict] = None) -> None:
+        """New run: the loop starts the wave over at t=0 with this seed (and wave = min_c / max_c / period_s)."""
         with self._lock:
-            self.seed, self.run_id, self._restart = seed, run_id, True
+            self.seed, self.run_id, self._restart, self._wave = seed, run_id, True, wave or {}
 
-    def take_restart(self) -> bool:
+    def take_restart(self) -> Optional[dict]:
+        """None if no restart is pending, else the wave overrides of the new run ({} = keep the current wave)."""
         with self._lock:
-            restart, self._restart = self._restart, False
-            return restart
+            if not self._restart:
+                return None
+            self._restart = False
+            return self._wave
 
     def publish(self, **state) -> None:
         with self._lock:
@@ -76,8 +80,11 @@ def run(sink: Callable[[Dict[str, float]], None], log, hz: float = 2.0, period_s
     start, i, wave_t = monotonic(), 0, 0.0
     try:
         while total is None or i < total:
-            if session.take_restart():
+            new_run = session.take_restart()
+            if new_run is not None:
                 wave_t, offsets = 0.0, cell_offsets(session.seed, len(VSS_CELL_TEMPS))
+                period_s, min_c, max_c = (new_run.get(k, v) for k, v in (("period_s", period_s), ("min_c", min_c),
+                                                                       ("max_c", max_c)))
             for f in faults.expire():
                 log.log("fault_cleared", reason="expired", **f.as_dict())
             stalled = faults.source_stalled()

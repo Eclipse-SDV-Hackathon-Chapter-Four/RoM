@@ -1,7 +1,9 @@
 # Made with Claude (Claude Code, Anthropic)
 """HTTP control API of the simulator (JSON, see rom_common.control). Port: SIM_API_PORT (0 = off).
 
-    POST   /run         {"run_id": "r1", "seed": 7}   start a new run: wave back to t=0, faults cleared, logs tagged
+    POST   /run         {"run_id": "r1", "seed": 7, "min_c": 25, "max_c": 32, "period_s": 120}
+                        start a new run: wave back to t=0, faults cleared, logs tagged; the wave settings are
+                        optional and stay in effect for the following runs
     POST   /faults      {"type": "drift", "cell": 1, "params": {"rate_c_per_s": 2}, "duration_s": 30}
     GET    /faults      active faults
     DELETE /faults/{id} clear one fault        DELETE /faults  clear all
@@ -33,13 +35,23 @@ def build_api(session, faults: FaultState, log, host: str, port: int) -> Control
             raise ControlError(422, "seed must be an integer")
         if run_id is not None and not isinstance(run_id, str):
             raise ControlError(422, "run_id must be a string")
+        wave = {}
+        for key in ("min_c", "max_c", "period_s"):
+            if key in body:
+                if isinstance(body[key], bool) or not isinstance(body[key], (int, float)):
+                    raise ControlError(422, f"{key} must be a number")
+                wave[key] = float(body[key])
+        if ("min_c" in wave) != ("max_c" in wave):
+            raise ControlError(422, "min_c and max_c go together")
+        if wave.get("period_s", 1) <= 0 or wave.get("min_c", 0) >= wave.get("max_c", 1):
+            raise ControlError(422, "need period_s > 0 and min_c < max_c")
         for f in faults.clear():
             log.log("fault_cleared", reason="new_run", **f.as_dict())
         if run_id is not None:
             log.run_id = run_id
-        session.restart(seed, log.run_id)
-        log.log("run_started", seed=seed)
-        return 200, {"run_id": log.run_id, "seed": seed}
+        session.restart(seed, log.run_id, wave)
+        log.log("run_started", seed=seed, **wave)
+        return 200, {"run_id": log.run_id, "seed": seed, **wave}
 
     def inject(body, params):
         body = _need_body(body)

@@ -172,3 +172,15 @@ def test_restart_resets_the_wave_and_reseeds():
                   monotonic=lambda: 0.0, session=session)
     assert _max(sent) == [sine_temp(0, 8), sine_temp(1, 8), sine_temp(0, 8), sine_temp(1, 8)]
     assert session.seed == 99
+
+
+def test_restart_can_change_the_wave():
+    session = simulator.Session()
+    sent, n = [], {"i": 0}
+    def sleep(s):
+        n["i"] += 1
+        if n["i"] == 1:
+            session.restart(seed=0, run_id="r2", wave={"min_c": 10.0, "max_c": 20.0, "period_s": 4.0})
+    simulator.run(sent.append, JsonLogger("simulator", "r1", io.StringIO()), hz=1, period_s=8, duration_s=3, sleep=sleep,
+                  monotonic=lambda: 0.0, session=session)
+    assert _max(sent) == [sine_temp(0, 8), sine_temp(0, 4, 10, 20), sine_temp(1, 4, 10, 20)]
