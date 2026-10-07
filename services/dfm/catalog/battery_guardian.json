@@ -1,0 +1,278 @@
+{
+    "id": "battery_guardian",
+    "version": 1,
+    "faults": [
+        {
+            "id": {
+                "Text": "battery_guardian.over_temp_warning"
+            },
+            "name": "BatteryOverTempWarning",
+            "summary": "Hottest valid cell at or above WARN_C (38 °C): occupants warned",
+            "category": "Hardware",
+            "severity": "Warn",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.over_temp_critical"
+            },
+            "name": "BatteryOverTempCritical",
+            "summary": "Hottest valid cell at or above CRIT_C (45 °C): cooling requested",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.mitigation_failed"
+            },
+            "name": "BatteryMitigationFailed",
+            "summary": "Pack still critical 5 s after cooling was requested",
+            "category": "Hardware",
+            "severity": "Fatal",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.signal_stale"
+            },
+            "name": "BatteryTempSignalStale",
+            "summary": "No cell temperature message for STALE_MS (2 s): warning chain blind",
+            "category": "Communication",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell_imbalance"
+            },
+            "name": "BatteryCellImbalance",
+            "summary": "Hottest minus coldest valid cell above IMBALANCE_C (10 °C) for IMBALANCE_S (2 s)",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell1.signal_stale"
+            },
+            "name": "BatteryCell1TempStale",
+            "summary": "Cell 1 temperature missing for STALE_MS while other cells report",
+            "category": "Communication",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell1.signal_stuck"
+            },
+            "name": "BatteryCell1TempStuck",
+            "summary": "Cell 1 temperature unchanged for STUCK_S (10 s)",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell1.out_of_range"
+            },
+            "name": "BatteryCell1TempOutOfRange",
+            "summary": "Cell 1 temperature outside the plausible range (-40..150 °C)",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell2.signal_stale"
+            },
+            "name": "BatteryCell2TempStale",
+            "summary": "Cell 2 temperature missing for STALE_MS while other cells report",
+            "category": "Communication",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell2.signal_stuck"
+            },
+            "name": "BatteryCell2TempStuck",
+            "summary": "Cell 2 temperature unchanged for STUCK_S (10 s)",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell2.out_of_range"
+            },
+            "name": "BatteryCell2TempOutOfRange",
+            "summary": "Cell 2 temperature outside the plausible range (-40..150 °C)",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell3.signal_stale"
+            },
+            "name": "BatteryCell3TempStale",
+            "summary": "Cell 3 temperature missing for STALE_MS while other cells report",
+            "category": "Communication",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell3.signal_stuck"
+            },
+            "name": "BatteryCell3TempStuck",
+            "summary": "Cell 3 temperature unchanged for STUCK_S (10 s)",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell3.out_of_range"
+            },
+            "name": "BatteryCell3TempOutOfRange",
+            "summary": "Cell 3 temperature outside the plausible range (-40..150 °C)",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell4.signal_stale"
+            },
+            "name": "BatteryCell4TempStale",
+            "summary": "Cell 4 temperature missing for STALE_MS while other cells report",
+            "category": "Communication",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell4.signal_stuck"
+            },
+            "name": "BatteryCell4TempStuck",
+            "summary": "Cell 4 temperature unchanged for STUCK_S (10 s)",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.cell4.out_of_range"
+            },
+            "name": "BatteryCell4TempOutOfRange",
+            "summary": "Cell 4 temperature outside the plausible range (-40..150 °C)",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        }
+    ]
+}

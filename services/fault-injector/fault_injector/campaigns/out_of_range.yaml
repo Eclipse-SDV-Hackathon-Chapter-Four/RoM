@@ -1,10 +1,12 @@
 # Made with Claude (Claude Code, Anthropic)
-# An implausible reading (200 °C) on the hottest cell must be rejected, not acted on.
+# An implausible reading (200 °C) on the hottest cell must be rejected, not acted on: the guardian drops that
+# cell (its own DTC) and keeps watching the pack on the other three, so it stays MONITORING.
 run_id: out-of-range-01
 seed: 7
 hazard: "H3: implausible temperature reading triggers a wrong reaction"
 safety_goal: "SG3: readings outside -40..150 °C are a sensor fault, not an overheat"
-expected_state: SENSOR_FAULT
+expected_state: MONITORING
+expected_faults: [battery_guardian.cell1.out_of_range]
 max_detect_ms: 3000
 baseline: {min_c: 25, max_c: 32, period_s: 120}
 faults:

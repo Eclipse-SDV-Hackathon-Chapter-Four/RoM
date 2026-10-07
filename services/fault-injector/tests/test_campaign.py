@@ -98,6 +98,16 @@ def test_every_bundled_campaign_is_valid_and_run_ids_are_unique():
     loaded = [campaign.load(n) for n in names]
     assert len({c.run_id for c in loaded}) == len(loaded)
     assert any("publisher" in c.targets() for c in loaded) and any(len(c.faults) > 1 for c in loaded)
+    assert all(c.expected_faults for c in loaded)   # every campaign names the DTCs the evidence must show
+
+
+def test_expected_faults_are_optional_deduplicated_and_checked_against_the_catalog():
+    assert campaign.parse(BASE).expected_faults == []
+    codes = ["battery_guardian.cell1.signal_stuck", "battery_guardian.signal_stale", "battery_guardian.signal_stale"]
+    assert campaign.parse(with_(expected_faults=codes)).expected_faults == codes[:2]
+    for bad in (["battery_guardian.cell5.signal_stuck"], "battery_guardian.signal_stale", [3]):
+        with pytest.raises(CampaignError, match="expected_faults"):
+            campaign.parse(with_(expected_faults=bad))
 
 
 def test_load_by_name_path_and_errors(tmp_path):

@@ -7,11 +7,11 @@ on purpose over HTTP.
 | VSS path | Written by the simulator |
 |---|---|
 | `Vehicle.Powertrain.TractionBattery.Cells.Cell1..4.Temperature` | custom overlay [`infra/vss/rom_cells.json`](../../infra/vss/rom_cells.json), loaded by the databroker next to the standard VSS |
-| `Vehicle.Powertrain.TractionBattery.Temperature.Max` | the hottest cell **that was written**: this is the only signal the guardian sees |
+| `Vehicle.Powertrain.TractionBattery.Temperature.Max` | the hottest cell **that was written** (kept for monitors; the guardian reads the cells) |
 
 Cell 1 is the hottest (the others sit 1-1.5 °C below it, the seed shuffles the gaps), so without faults `Max` is
-the plain wave. Keep this in mind when you design a fault: **a fault on a cell that is not the current maximum does
-not reach the guardian.** Cell 1 is the one to fault for a visible effect, or drop it to see the next cell take over.
+the plain wave. The guardian monitors every cell on its own, so a fault on any cell raises that cell's DFM code
+(`battery_guardian.cell<N>.…`); only the thermal states follow the hottest **valid** cell.
 
 ## Run
 

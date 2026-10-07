@@ -38,6 +38,7 @@ seed: 7                             # replayable runs (cell offsets, drop probab
 hazard: "H1: thermal runaway of a single traction battery cell"
 safety_goal: "SG1: warn at 38 °C and request cooling at 45 °C pack maximum"
 expected_state: CRITICAL            # CLEAR | MONITORING | WARNING | CRITICAL | SENSOR_FAULT | MITIGATING
+expected_faults: [battery_guardian.over_temp_critical]   # DFM codes OpenSOVD must show (rom_common.contracts.FAULT_CODES)
 max_detect_ms: 35000                # ... reached within this long after the first fault
 duration_s: 70                      # optional; default = last fault end + settle_s (default 10)
 baseline: {min_c: 25, max_c: 32}    # optional calm wave, so only the fault moves the guardian
@@ -51,26 +52,30 @@ until the campaign ends. Fault parameters are checked by the services at injecti
 
 Bundled campaigns (`fault_injector/campaigns/`), or pass a path to your own:
 
-| Campaign | Fault | Expected |
-|---|---|---|
-| `thermal_runaway` | drift on cell 1 | `CRITICAL` |
-| `sensor_stuck` | all four cells stuck | `SENSOR_FAULT` (10 s) |
-| `out_of_range` | 200 °C on cell 1 | `SENSOR_FAULT` |
-| `source_dropout` | all cells dropped | `SENSOR_FAULT` (stale) |
-| `replay_interruption` | source stalls and resumes | `SENSOR_FAULT` (stale) |
-| `transport_drop` | every message dropped | `SENSOR_FAULT` (stale) |
-| `transport_delay` | messages 2.5 s late | `SENSOR_FAULT` (stale), recovers after about 1 s once the late messages keep arriving |
-| `combined_runaway_lossy_link` | drift + duplicate + 600 ms delay | `CRITICAL` |
+| Campaign | Fault | Expected state | Expected DFM faults (`battery_guardian.…`) |
+|---|---|---|---|
+| `thermal_runaway` | drift on cell 1 | `CRITICAL` | `over_temp_warning`, `over_temp_critical`, `cell_imbalance` |
+| `sensor_stuck` | all four cells stuck | `SENSOR_FAULT` (10 s) | `cell1..4.signal_stuck` |
+| `sensor_stuck_cell3` | cell 3 stuck | `MONITORING` | `cell3.signal_stuck` |
+| `out_of_range` | 200 °C on cell 1 | `MONITORING` (cell 1 left out) | `cell1.out_of_range` |
+| `cell_dropout_cell2` | cell 2 dropped | `MONITORING` | `cell2.signal_stale` |
+| `source_dropout` | all cells dropped | `SENSOR_FAULT` (stale) | `signal_stale` |
+| `replay_interruption` | source stalls and resumes | `SENSOR_FAULT` (stale) | `signal_stale` |
+| `transport_drop` | every message dropped | `SENSOR_FAULT` (stale) | `signal_stale` |
+| `transport_delay` | messages 2.5 s late | `SENSOR_FAULT` (stale), recovers after about 1 s once the late messages keep arriving | `signal_stale` |
+| `combined_runaway_lossy_link` | drift + duplicate + 600 ms delay | `CRITICAL` | as `thermal_runaway` |
+
+Transport faults hit the cell topic (`…/1001/1/8002`), which is what the guardian reads.
 
 `reorder` and `duplicate` are available but have no campaign of their own: the guardian does not detect them yet
 (roadmap, Guardian section), so there is no state to expect.
 
 ## Log events
 
-`campaign_start` (hazard, safety_goal, expected_state, max_detect_ms, seed, baseline, faults), `fault_injected`,
+`campaign_start` (hazard, safety_goal, expected_state, expected_faults, max_detect_ms, seed, baseline, faults), `fault_injected`,
 `fault_cleared` (`scheduled` / `campaign_end`), `fault_failed`, `campaign_end` (`completed` / `aborted` /
 `interrupted`). The runner does not judge the run: comparing the guardian's `state_change` events with
-`expected_state` and `max_detect_ms` is the evidence collector's job.
+`expected_state` and `max_detect_ms`, and checking `expected_faults` in OpenSOVD, is the evidence collector's job.
 
 ## Test
 

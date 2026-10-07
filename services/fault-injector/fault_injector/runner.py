@@ -2,7 +2,8 @@
 """Runs one campaign: tags the run, injects every fault at its time, clears it again, and logs the trail.
 
 Log events (JSON lines, all with the campaign's run_id, the raw material for the evidence collector):
-    campaign_start   hazard, safety_goal, expected_state, max_detect_ms, seed, duration_s, baseline, faults
+    campaign_start   hazard, safety_goal, expected_state, expected_faults, max_detect_ms, seed, duration_s,
+                     baseline, faults
     fault_injected   the step plus the id the service gave the fault
     fault_cleared    reason: scheduled | campaign_end
     fault_failed     a service refused or was unreachable (the campaign is aborted)
@@ -70,7 +71,8 @@ class Runner:
         self.log.run_id = c.run_id
         status, error = "completed", None
         self.log.log("campaign_start", hazard=c.hazard, safety_goal=c.safety_goal, expected_state=c.expected_state,
-                     max_detect_ms=c.max_detect_ms, seed=c.seed, duration_s=c.duration_s,
+                     expected_faults=c.expected_faults, max_detect_ms=c.max_detect_ms, seed=c.seed,
+                     duration_s=c.duration_s,
                      baseline=c.baseline, faults=[f.as_dict() for f in c.faults])
         try:
             for target, url in self.urls.items():   # new run: wave back to t=0, stale faults gone, logs tagged
