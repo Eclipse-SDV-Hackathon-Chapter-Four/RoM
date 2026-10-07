@@ -14,7 +14,10 @@ help:   ## list targets
 
 mqtt-restart: ## recreate mosquitto (fresh broker, host port 1883 re-published); runs before up / guardian / adapter / hw
 	$(DC) up -d --force-recreate mosquitto
-	@ss -ltn 2>/dev/null | grep -q ':1883 ' || { echo "WARNING: nothing listens on host port 1883 (is another broker or a stale container holding it?)"; exit 1; }
+	@# `up` already fails when another process holds port 1883. This only checks that the container really publishes it:
+	@# ask compose, not the host (`ss` is not everywhere, Docker Desktop / rootless Podman publish ports elsewhere). Hint only.
+	@for i in 1 2 3 4 5; do $(DC) port mosquitto 1883 >/dev/null 2>&1 && exit 0; sleep 1; done; \
+	  echo "WARNING: could not confirm that mosquitto publishes port 1883 ($(DC_BIN) port mosquitto 1883 failed); continuing"
 
 up:     mqtt-restart ## start databroker + mosquitto in the background (mosquitto always recreated)
 	$(DC) up -d databroker mosquitto
