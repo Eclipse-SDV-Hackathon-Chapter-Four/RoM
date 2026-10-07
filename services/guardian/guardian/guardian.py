@@ -11,6 +11,7 @@ KUKSA Databroker directly (challenge architecture rule): KUKSA -> vss-uprotocol-
 Run:
   rom-guardian              test scenario, offline, instant   (or: python -m guardian.guardian)
   rom-guardian --uprotocol  live: battery temp from up://<UP_AUTHORITY>/1001/1/8001
+  rom-guardian --fault-events  test scenario as DFM fault events (JSON lines, services/dfm/fixtures)
   make guardian             databroker + simulator + vss-uprotocol-client + guardian in compose
 """
 import os
@@ -21,8 +22,11 @@ import threading
 import time
 
 from rom_common import clock, config, jsonlog
-from rom_common.contracts import (CLEAR, CRITICAL, MONITORING, QOS_DISPLAY_CMD, SENSOR_FAULT, TOPIC_DISPLAY_CMD, WARNING,
-                                  build_display_cmd)
+from rom_common.contracts import (CLEAR, CRITICAL, FAILED, FAULT_MITIGATION_FAILED, FAULT_OUT_OF_RANGE,
+                                  FAULT_OVER_TEMP_CRITICAL, FAULT_OVER_TEMP_WARNING, FAULT_SIGNAL_STALE,
+                                  FAULT_SIGNAL_STUCK, MONITORING, PASSED, QOS_DISPLAY_CMD, QOS_GUARDIAN_FAULT,
+                                  SENSOR_FAULT, TOPIC_DISPLAY_CMD, TOPIC_GUARDIAN_FAULT, WARNING, build_display_cmd,
+                                  build_fault_event)
 
 MITIGATING = "MITIGATING"
 DISPLAY_PERIOD_S = 1.0  # re-publish the display command this often: fresh temp_c, and proof the guardian is alive
@@ -101,6 +105,38 @@ SCENARIO = (
 )
 
 
+SENSOR_FAULTS = {"stale signal": FAULT_SIGNAL_STALE, "stuck signal": FAULT_SIGNAL_STUCK,
+                 "out of range": FAULT_OUT_OF_RANGE}
+
+
+def active_faults(state, reason):
+    """DFM faults that are Failed while the guardian is in (state, reason)."""
+    if state == WARNING:
+        return frozenset({FAULT_OVER_TEMP_WARNING})
+    if state in (CRITICAL, MITIGATING):
+        failed = {FAULT_MITIGATION_FAILED} if reason == "mitigation failed" else set()
+        return frozenset({FAULT_OVER_TEMP_CRITICAL} | failed)
+    if state == SENSOR_FAULT:
+        return frozenset({SENSOR_FAULTS[reason]})
+    return frozenset()
+
+
+def fault_changes(old, new):
+    """[(fault, stage)]: Passed for the faults that cleared, then Failed for the new ones."""
+    return [(f, PASSED) for f in sorted(old - new)] + [(f, FAILED) for f in sorted(new - old)]
+
+
+def scenario_fault_events():
+    """SCENARIO as fault event payloads, scenario time as ts_ms and seq (deterministic: DFM test fixture)."""
+    g, active = Guardian(), frozenset()
+    for t, temp in enumerate(SCENARIO):
+        state, reason = g.update(t, temp)
+        new = active_faults(state, reason)
+        for fault, stage in fault_changes(active, new):
+            yield build_fault_event(fault, stage, t * 1000, g.temp, reason, t, None)
+        active = new
+
+
 def show(g, t, temp):
     before = g.state
     state, reason = g.update(t, temp)
@@ -145,6 +181,7 @@ def loop(samples, log, display=None):
     g, start = Guardian(), time.monotonic()
     last = None  # last uProtocol sample: its msg_id/seq link a state change to the message that caused it
     display_seq, last_display = 0, 0.0
+    active = frozenset()  # faults currently Failed in the DFM
     # Tick even without samples, otherwise a dead sensor would never be detected as stale.
     while True:
         try:
@@ -157,6 +194,16 @@ def loop(samples, log, display=None):
         if state != before:
             log.log("state_change", **{"from": before}, to=state, reason=reason, temp_c=round(g.temp, 2),
                     seq=last.seq if last else None, msg_id=last.msg_id if last else None)
+        new = active_faults(state, reason)
+        for fault, stage in fault_changes(active, new):
+            temp_c = round(g.temp, 2)
+            seq, msg_id = (last.seq, last.msg_id) if last else (None, None)
+            log.log("fault", fault=fault, stage=stage, reason=reason, temp_c=temp_c, seq=seq, msg_id=msg_id)
+            if display is not None:  # same MQTT client as the display command
+                display.publish(TOPIC_GUARDIAN_FAULT,
+                                build_fault_event(fault, stage, clock.now_ms(), temp_c, reason, seq, msg_id),
+                                qos=QOS_GUARDIAN_FAULT)
+        active = new
         # State shown on the device display (QoS 1, retained): on every change and as a heartbeat.
         now = time.monotonic()
         if display is not None and (state != before or now - last_display >= DISPLAY_PERIOD_S):
@@ -174,6 +221,9 @@ def main():
     try:
         if "--uprotocol" in sys.argv:
             run_uprotocol()
+        elif "--fault-events" in sys.argv:
+            for event in scenario_fault_events():
+                print(event)
         else:
             g = Guardian()
             print(f"{'time':>6}  {'temp':>6}  state")

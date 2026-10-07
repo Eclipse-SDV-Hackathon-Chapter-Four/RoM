@@ -78,16 +78,22 @@ services:
       MQTT_HOST: mosquitto             # display command (rom/actuator/display/cmd) goes out over MQTT
     depends_on: [vss-uprotocol-client, mosquitto]
 
+  dfm:
+    profiles: ["tools"]          # fault-lib DFM + bridge: guardian fault events (MQTT) -> fault records (dfm/query)
+    build: {context: .., dockerfile: services/dfm/Dockerfile}
+    image: localhost/rom/dfm:dev
+    restart: on-failure
+    ipc: shareable               # OpenSOVD gateway joins with ipc: "service:dfm" + the iceoryx2 volume
+    volumes: [iceoryx2:/tmp/iceoryx2]
+    environment:
+      MQTT_HOST: mosquitto
+    depends_on: [mosquitto]
+
   # --- TODO placeholders: images build and start, log "not_implemented" and exit ---
   fault-injector:
     profiles: ["todo"]
     build: {context: .., dockerfile: services/fault-injector/Dockerfile}
     image: localhost/rom/fault-injector:dev
-
-  dfm:
-    profiles: ["todo"]
-    build: {context: .., dockerfile: services/dfm/Dockerfile}
-    image: localhost/rom/dfm:dev
 
   opensovd:
     profiles: ["todo"]
@@ -112,3 +118,4 @@ services:
 
 volumes:
   kuksa-history:
+  iceoryx2:

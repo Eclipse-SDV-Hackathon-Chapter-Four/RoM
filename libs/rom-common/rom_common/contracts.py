@@ -13,10 +13,12 @@ VSS_BATTERY_TEMP = "Vehicle.Powertrain.TractionBattery.Temperature.Max"
 TOPIC_SENSOR_TEMP = "rom/sensor/battery/temp"          # QoS 0, no retain
 TOPIC_SENSOR_STATUS = "rom/sensor/battery/status"      # QoS 1, retain (LWT)
 TOPIC_DISPLAY_CMD = "rom/actuator/display/cmd"         # QoS 1, retain
+TOPIC_GUARDIAN_FAULT = "rom/guardian/fault"            # QoS 1, no retain (-> DFM)
 
 QOS_SENSOR_TEMP = 0
 QOS_SENSOR_STATUS = 1
 QOS_DISPLAY_CMD = 1
+QOS_GUARDIAN_FAULT = 1
 
 # --- Guardian states and reasons -------------------------------------------
 CLEAR = "CLEAR"
@@ -31,6 +33,17 @@ REASON_TEMP_ABOVE_CRIT = "TEMP_ABOVE_CRIT"
 REASON_STALE = "STALE"
 REASON_STUCK = "STUCK"
 REASON_OUT_OF_RANGE = "OUT_OF_RANGE"
+
+# --- Guardian faults -> DFM (names = services/dfm/catalog/battery_guardian.json) ---
+FAULT_OVER_TEMP_WARNING = "BatteryOverTempWarning"
+FAULT_OVER_TEMP_CRITICAL = "BatteryOverTempCritical"
+FAULT_MITIGATION_FAILED = "BatteryMitigationFailed"
+FAULT_SIGNAL_STALE = "BatteryTempSignalStale"
+FAULT_SIGNAL_STUCK = "BatteryTempSignalStuck"
+FAULT_OUT_OF_RANGE = "BatteryTempOutOfRange"
+FAULTS = (FAULT_OVER_TEMP_WARNING, FAULT_OVER_TEMP_CRITICAL, FAULT_MITIGATION_FAILED,
+          FAULT_SIGNAL_STALE, FAULT_SIGNAL_STUCK, FAULT_OUT_OF_RANGE)
+FAILED, PASSED = "Failed", "Passed"
 
 
 class ContractError(ValueError):
@@ -94,3 +107,15 @@ def parse_display_cmd(payload: "bytes | str") -> dict:
     if not isinstance(data, dict) or data.get("state") not in STATES:
         raise ContractError("invalid_display_cmd")
     return data
+
+
+def build_fault_event(fault: str, stage: str, ts_ms: int, temp_c: Optional[float], reason: str,
+                      seq: Optional[int], msg_id: Optional[str]) -> str:
+    """Payload for TOPIC_GUARDIAN_FAULT; services/dfm turns it into a fault-lib record."""
+    if fault not in FAULTS or stage not in (FAILED, PASSED):
+        raise ContractError(f"unknown_fault_or_stage: {fault} {stage}")
+    return json.dumps(
+        {"fault": fault, "stage": stage, "ts_ms": ts_ms, "temp_c": temp_c, "reason": reason,
+         "seq": seq, "msg_id": msg_id},
+        separators=(",", ":"),
+    )

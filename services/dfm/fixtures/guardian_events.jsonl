@@ -1,0 +1,14 @@
+{"fault":"BatteryOverTempWarning","stage":"Failed","ts_ms":8000,"temp_c":40,"reason":"getting hot","seq":8,"msg_id":null}
+{"fault":"BatteryOverTempWarning","stage":"Passed","ts_ms":10000,"temp_c":46,"reason":"too hot","seq":10,"msg_id":null}
+{"fault":"BatteryOverTempCritical","stage":"Failed","ts_ms":10000,"temp_c":46,"reason":"too hot","seq":10,"msg_id":null}
+{"fault":"BatteryOverTempCritical","stage":"Passed","ts_ms":14000,"temp_c":36,"reason":"temp ok","seq":14,"msg_id":null}
+{"fault":"BatteryTempSignalStale","stage":"Failed","ts_ms":18000,"temp_c":30,"reason":"stale signal","seq":18,"msg_id":null}
+{"fault":"BatteryTempSignalStale","stage":"Passed","ts_ms":20000,"temp_c":30,"reason":"temp ok","seq":20,"msg_id":null}
+{"fault":"BatteryTempOutOfRange","stage":"Failed","ts_ms":22000,"temp_c":150,"reason":"out of range","seq":22,"msg_id":null}
+{"fault":"BatteryTempOutOfRange","stage":"Passed","ts_ms":23000,"temp_c":30,"reason":"temp ok","seq":23,"msg_id":null}
+{"fault":"BatteryOverTempWarning","stage":"Failed","ts_ms":25000,"temp_c":42,"reason":"getting hot","seq":25,"msg_id":null}
+{"fault":"BatteryOverTempWarning","stage":"Passed","ts_ms":36000,"temp_c":42,"reason":"stuck signal","seq":36,"msg_id":null}
+{"fault":"BatteryTempSignalStuck","stage":"Failed","ts_ms":36000,"temp_c":42,"reason":"stuck signal","seq":36,"msg_id":null}
+{"fault":"BatteryTempSignalStuck","stage":"Passed","ts_ms":37000,"temp_c":30,"reason":"temp ok","seq":37,"msg_id":null}
+{"fault":"BatteryOverTempCritical","stage":"Failed","ts_ms":39000,"temp_c":46,"reason":"too hot","seq":39,"msg_id":null}
+{"fault":"BatteryMitigationFailed","stage":"Failed","ts_ms":46000,"temp_c":50.1,"reason":"mitigation failed","seq":46,"msg_id":null}

@@ -37,8 +37,37 @@ What RoM fixes on top of that:
 | `battery_guardian.signal_stuck` | BatteryTempSignalStuck | `SENSOR_FAULT` "stuck signal" | Error |
 | `battery_guardian.out_of_range` | BatteryTempOutOfRange | `SENSOR_FAULT` "out of range" | Error |
 
-Example query output: [`fixtures/battery_guardian_faults.json`](fixtures/battery_guardian_faults.json).
-**Hand-written example until it is generated** from a real `dfm_bin` (guardian test scenario replayed into it).
+Example query output: [`fixtures/battery_guardian_faults.json`](fixtures/battery_guardian_faults.json) — generated,
+not hand-written: the guardian test scenario ([`fixtures/guardian_events.jsonl`](fixtures/guardian_events.jsonl),
+`rom-guardian --fault-events`) replayed into a real `dfm_bin`, then `rom-dfm query --stable` (no timestamps).
+Regenerate with `make dfm-fixtures`; a guardian test fails if the events drift from the scenario.
+
+## Run
+
+```bash
+make guardian       # whole stack incl. mosquitto + dfm
+make dfm-faults     # fault records in the running DFM (JSON)
+mosquitto_sub -t rom/guardian/fault -v   # raw guardian fault events
+```
+
+The `dfm` container runs `dfm_bin` (catalog dir `/etc/rom/catalog`, storage `/var/lib/rom-dfm`) and
+`rom-dfm report` (Rust, [`src/main.rs`](src/main.rs)). Both are built inside the fault-lib workspace at the
+pinned revision, so the IPC types match. Records are lost when the container is recreated (no storage volume yet).
+
+| Command (inside the container) | What |
+|---|---|
+| `rom-dfm report` | MQTT `rom/guardian/fault` → fault-lib `Reporter` → DFM (default) |
+| `rom-dfm replay <events.jsonl>` | same events from a file, e.g. `/etc/rom/fixtures/guardian_events.jsonl` |
+| `rom-dfm query [--stable]` | all records of `battery_guardian` as JSON |
+
+| Env | Default |
+|---|---|
+| `MQTT_HOST` / `MQTT_PORT` | `localhost` / `1883` |
+| `CATALOG` | `/etc/rom/catalog/battery_guardian.json` |
+| `DFM_PATH` (query) | `battery_guardian` |
+
+Guardian event (`libs/rom-common` `build_fault_event`, QoS 1):
+`{"fault":"BatteryTempSignalStale","stage":"Failed","ts_ms":…,"temp_c":30.0,"reason":"stale signal","seq":18,"msg_id":"…"}`
 
 ## Testing the OpenSOVD side without the RoM stack
 
@@ -47,5 +76,10 @@ Example query output: [`fixtures/battery_guardian_faults.json`](fixtures/battery
 - **In-process, real DFM logic:** `DirectDfmQuery::new(storage, registry)` with `KvsSovdFaultStateStorage` on a temp
   dir, records fed through `FaultRecordProcessor` — see fault-lib `src/dfm_lib/examples/sovd_fault_manager.rs`
   (`InMemoryStorage` is `cfg(test)` in fault-lib, not usable from outside).
-- **Integration:** run the `dfm` container and replay the scenario into it (no guardian, simulator or MQTT needed);
-  the gateway shares its IPC namespace and `/tmp/iceoryx2` (`ipc: "service:dfm"` in compose).
+- **Integration:** a real DFM with known records, no guardian, simulator or MQTT needed:
+  ```bash
+  docker compose -f infra/docker-compose.yml --profile tools up -d dfm
+  docker compose -f infra/docker-compose.yml --profile tools exec dfm rom-dfm replay /etc/rom/fixtures/guardian_events.jsonl
+  ```
+  The gateway container joins the DFM's shared memory with `ipc: "service:dfm"` and
+  `volumes: [iceoryx2:/tmp/iceoryx2]` in `infra/docker-compose.yml`.

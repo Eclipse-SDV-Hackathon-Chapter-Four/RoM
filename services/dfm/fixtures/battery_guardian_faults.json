@@ -1,30 +1,134 @@
 [
   {
-    "code": "battery_guardian.over_temp_critical",
-    "fault_name": "BatteryOverTempCritical",
-    "status": {
-      "test_failed": true
-    },
-    "occurrence_counter": 2,
+    "code": "battery_guardian.mitigation_failed",
     "env": {
-      "temp_c": "48.0",
+      "reason": "mitigation failed",
+      "seq": "46",
+      "temp_c": "50.1"
+    },
+    "fault_name": "BatteryMitigationFailed",
+    "occurrence_counter": 1,
+    "severity": 5,
+    "status": {
+      "confirmedDTC": "1",
+      "mask": "0xAB",
+      "pendingDTC": "0",
+      "testFailed": "1",
+      "testFailedSinceLastClear": "1",
+      "testFailedThisOperationCycle": "1",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "1"
+    }
+  },
+  {
+    "code": "battery_guardian.out_of_range",
+    "env": {
+      "reason": "out of range",
+      "seq": "22",
+      "temp_c": "150"
+    },
+    "fault_name": "BatteryTempOutOfRange",
+    "occurrence_counter": 1,
+    "severity": 4,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0xA2",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "1",
+      "testFailedThisOperationCycle": "1",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "1"
+    }
+  },
+  {
+    "code": "battery_guardian.over_temp_critical",
+    "env": {
       "reason": "too hot",
-      "seq": "9",
-      "msg_id": "0199b6c2-0000-7000-8000-000000000009"
+      "seq": "39",
+      "temp_c": "46"
+    },
+    "fault_name": "BatteryOverTempCritical",
+    "occurrence_counter": 2,
+    "severity": 4,
+    "status": {
+      "confirmedDTC": "1",
+      "mask": "0xAB",
+      "pendingDTC": "0",
+      "testFailed": "1",
+      "testFailedSinceLastClear": "1",
+      "testFailedThisOperationCycle": "1",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "1"
+    }
+  },
+  {
+    "code": "battery_guardian.over_temp_warning",
+    "env": {
+      "reason": "getting hot",
+      "seq": "25",
+      "temp_c": "42"
+    },
+    "fault_name": "BatteryOverTempWarning",
+    "occurrence_counter": 2,
+    "severity": 3,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0xA2",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "1",
+      "testFailedThisOperationCycle": "1",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "1"
     }
   },
   {
     "code": "battery_guardian.signal_stale",
-    "fault_name": "BatteryTempSignalStale",
-    "status": {
-      "test_failed": false
-    },
-    "occurrence_counter": 1,
     "env": {
-      "temp_c": "30.0",
-      "reason": "temp ok",
-      "seq": "17",
-      "msg_id": "0199b6c2-0000-7000-8000-000000000011"
+      "reason": "stale signal",
+      "seq": "18",
+      "temp_c": "30"
+    },
+    "fault_name": "BatteryTempSignalStale",
+    "occurrence_counter": 1,
+    "severity": 4,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0xA2",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "1",
+      "testFailedThisOperationCycle": "1",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "1"
+    }
+  },
+  {
+    "code": "battery_guardian.signal_stuck",
+    "env": {
+      "reason": "stuck signal",
+      "seq": "36",
+      "temp_c": "42"
+    },
+    "fault_name": "BatteryTempSignalStuck",
+    "occurrence_counter": 1,
+    "severity": 4,
+    "status": {
+      "confirmedDTC": "0",
+      "mask": "0xA2",
+      "pendingDTC": "0",
+      "testFailed": "0",
+      "testFailedSinceLastClear": "1",
+      "testFailedThisOperationCycle": "1",
+      "testNotCompletedSinceLastClear": "0",
+      "testNotCompletedThisOperationCycle": "0",
+      "warningIndicatorRequested": "1"
     }
   }
 ]

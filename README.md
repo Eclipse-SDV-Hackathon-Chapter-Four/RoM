@@ -14,11 +14,11 @@ Every component is its own pip package; services that run under Ankaios have the
 | `libs/rom-common` | `rom_common` | – | contracts, config, JSON logging, KUKSA / MQTT helpers |
 | `libs/rom-uprotocol` | `rom_uprotocol` | – | uProtocol library: Zenoh transport, URIs, publisher, subscriber |
 | `services/vss-uprotocol-client` | `vss_uprotocol_client` | ✅ | KUKSA Databroker → uProtocol |
-| `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (uProtocol input; display command out over MQTT) |
+| `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (uProtocol input; display command and DFM fault events out over MQTT) |
 | `services/simulator` | `simulator` | dev image | sine-wave temperature into KUKSA |
 | `services/adapter` | `adapter` | dev image (`make hw`) | MQTT → KUKSA |
 | `services/fault-injector` | `fault_injector` | ✅ TODO | Fault Campaign Runner |
-| `services/dfm` | `dfm` | ✅ TODO | Diagnostic Fault Manager |
+| `services/dfm` | `rom_dfm` (Rust) | ✅ | Diagnostic Fault Manager: fault-lib `dfm_bin` + guardian fault events (MQTT) → fault records |
 | `services/opensovd` | – | ✅ TODO | Eclipse OpenSOVD server |
 | `services/evidence-collector` | `evidence_collector` | ✅ TODO | Evidence Collector → verdicts |
 | `MXChip/AZ3166` | – (C firmware) | – | AZ3166 board on Eclipse ThreadX: sensor telemetry over MQTT, guardian state on its OLED |
@@ -26,7 +26,7 @@ Every component is its own pip package; services that run under Ankaios have the
 ## Quick start
 
 ```bash
-make guardian                    # databroker + simulator + vss-uprotocol-client + guardian, shows guardian logs
+make guardian                    # databroker + simulator + vss-uprotocol-client + guardian + dfm, shows guardian logs
 SIM_PERIOD_S=30 make guardian    # faster wave (30 s instead of 120 s)
 make down                        # stop everything
 ```
@@ -39,7 +39,9 @@ make down                        # stop everything
 |---|---|
 | `make help` | list all commands |
 | `make up` | start databroker + mosquitto in the background |
-| `make guardian` | databroker + simulator + vss-uprotocol-client + guardian, follow guardian logs |
+| `make guardian` | databroker + simulator + vss-uprotocol-client + guardian + dfm, follow guardian logs |
+| `make dfm-faults` | fault records in the running DFM as JSON |
+| `make dfm-fixtures` | regenerate the DFM test fixtures for OpenSOVD (`services/dfm/fixtures`) |
 | `make images` | build all service images `localhost/rom/<service>:dev` |
 | `make hw` | hardware run: AZ3166 → mosquitto → adapter → databroker → vss-uprotocol-client → guardian (no simulator), follow adapter + guardian logs |
 | `make adapter` | MQTT → KUKSA adapter in the foreground |
@@ -251,7 +253,7 @@ flowchart LR
 - [ ] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event
 
 #### 4. Diagnostics
-- [ ] DFM fault records for every faulted scenario
+- [x] DFM fault records for every faulted scenario (fault-lib `dfm_bin`, catalog `battery_guardian`, see `services/dfm`)
 - [ ] Expose diagnostics through Eclipse OpenSOVD
 - [ ] Diagnostic faults: delayed DFM write · partial OpenSOVD visibility
 

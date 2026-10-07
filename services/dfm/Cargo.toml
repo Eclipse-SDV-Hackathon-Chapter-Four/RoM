@@ -1,0 +1,19 @@
+# Made with Claude (Claude Code, Anthropic)
+# Built as a member of the fault-lib workspace (see Dockerfile), so it uses the exact
+# fault-lib / iceoryx2 versions of dfm_bin: the IPC types must match byte for byte.
+[package]
+name = "rom_dfm"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "rom-dfm"
+path = "src/main.rs"
+
+[dependencies]
+common = { path = "../common" }
+fault_lib = { path = "../fault_lib" }
+dfm_lib = { path = "../dfm_lib" }
+iceoryx2-bb-container.workspace = true
+rumqttc = "0.24"
+serde_json = "1"
