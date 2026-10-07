@@ -1,8 +1,8 @@
 # Made with Claude (Claude Code, Anthropic)
 # RoM stack as Eclipse Ankaios workloads (podman, one agent "rom_hpc"): the same services as infra/docker-compose.yml,
 # from the self-contained images localhost/rom/*:dev (no bind mounts). Started by scripts/final_run.sh, which also
-# creates the podman network "rom" (DNS by --network-alias) and the iceoryx2 tmpfs volumes shared by dfm + opensovd.
-# Campaigns and the evidence collector are added per run by the script (they depend on this stack).
+# creates the podman network "rom" (DNS by --network-alias) and the volumes (iceoryx2 tmpfs, DFM, evidence).
+# The fault campaigns are added per run by the script; the evidence collector judges each one live.
 apiVersion: v1
 workloads:
   mosquitto:
@@ -31,7 +31,8 @@ workloads:
     runtimeConfig: |
       image: localhost/rom/simulator:dev
       commandOptions: ["--network", "rom", "--network-alias", "simulator",
-                       "-e", "KUKSA_HOST=databroker", "-e", "SIM_API_HOST=0.0.0.0", "-e", "SIM_API_PORT=8080"]
+                       "-e", "KUKSA_HOST=databroker", "-e", "SIM_API_HOST=0.0.0.0", "-e", "SIM_API_PORT=8080",
+                       "-e", "SIM_COOLING=1", "-e", "ZENOH_CONNECT=tcp/guardian:7447"]
 
   vss-uprotocol-client:
     runtime: podman
@@ -81,3 +82,18 @@ workloads:
       commandOptions: ["--network", "rom", "--network-alias", "opensovd", "-p", "127.0.0.1:7690:7690",
                        "-v", "rom-iceoryx2-shm:/dev/shm", "-v", "rom-iceoryx2:/tmp/iceoryx2",
                        "-e", "SOVD_DFM_APPS=battery_guardian"]
+
+  evidence-collector:                  # records every RoM topic, judges each campaign run: http://localhost:8082/ui/
+    runtime: podman
+    agent: rom_hpc
+    restartPolicy: ALWAYS
+    dependencies:
+      guardian: ADD_COND_RUNNING
+      opensovd: ADD_COND_RUNNING
+    runtimeConfig: |
+      image: localhost/rom/evidence-collector:dev
+      commandOptions: ["--network", "rom", "--network-alias", "evidence-collector", "-p", "127.0.0.1:8082:8082",
+                       "-v", "rom-evidence-data:/data",
+                       "-e", "ZENOH_LISTEN=tcp/0.0.0.0:7447",
+                       "-e", "ZENOH_CONNECT=tcp/vss-uprotocol-client:7447,tcp/guardian:7447",
+                       "-e", "SOVD_URL=http://opensovd:7690/sovd"]

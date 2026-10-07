@@ -10,6 +10,9 @@ description = "RoM Fault Campaign Runner: YAML campaigns injected over the simul
 requires-python = ">=3.10"
 dependencies = ["rom-common", "pyyaml>=6"]
 
+[project.optional-dependencies]
+uprotocol = ["rom-uprotocol"]   # --uprotocol: campaign events for the evidence collector (plus up-python, --no-deps)
+
 [project.scripts]
 rom-fault-injector = "fault_injector.__main__:main"
 

@@ -50,6 +50,8 @@ services:
       SIM_CELLS: ${SIM_CELLS:-1,2,3,4}  # `make hw`: 2,3,4, the real board is cell 1 (adapter)
       SIM_API_HOST: 0.0.0.0            # fault API for the fault-injector (and curl); no authentication
       SIM_API_PORT: 8080
+      SIM_COOLING: ${SIM_COOLING:-1}   # cooling actuator: cells cool while the guardian is MITIGATING (simulator/cooling.py)
+      ZENOH_CONNECT: tcp/guardian:7447 # guardian state up://rom-vehicle/1002/1/8006; Zenoh retries until the guardian is up
     ports: ["127.0.0.1:8080:8080"]     # loopback only: keep the unauthenticated fault API off the network
     depends_on: [databroker]
 
@@ -120,12 +122,21 @@ services:
     environment:
       SIMULATOR_URL: http://simulator:8080
       PUBLISHER_URL: http://vss-uprotocol-client:8081
+      UP_CAMPAIGN_EVENTS: "1"                        # campaign events up://rom-vehicle/1003/1/8005 -> evidence collector
+      ZENOH_CONNECT: tcp/evidence-collector:7447
 
-  # --- TODO placeholders: images build and start, log "not_implemented" and exit ---
   evidence-collector:
-    profiles: ["todo"]
+    profiles: ["tools"]          # records every RoM topic, judges each campaign run: http://localhost:8082/ui/
     build: {context: .., dockerfile: services/evidence-collector/Dockerfile}
     image: localhost/rom/evidence-collector:dev
+    restart: on-failure
+    volumes: [evidence-data:/data]   # events.jsonl, evidence.db, evidence/*.json survive restarts
+    ports: ["127.0.0.1:8082:8082"]
+    environment:
+      ZENOH_LISTEN: tcp/0.0.0.0:7447                                          # the fault-injector connects here
+      ZENOH_CONNECT: tcp/vss-uprotocol-client:7447,tcp/guardian:7447          # cells + heartbeats, faults + state
+      SOVD_URL: http://opensovd:7690/sovd
+    depends_on: [guardian, opensovd]
 
   dev:
     profiles: ["tools"]          # only started on demand
@@ -141,6 +152,7 @@ services:
 volumes:
   kuksa-history:
   dfm-storage:
+  evidence-data:
   # iceoryx2 between dfm and opensovd: /dev/shm (shared memory) and /tmp/iceoryx2 (service/node files)
   # must live and die together, so both are tmpfs volumes mounted into both containers. A shared IPC
   # namespace (ipc: service:dfm) plus a persistent volume breaks on a DFM restart: the restart gets a

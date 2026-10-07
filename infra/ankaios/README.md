@@ -4,9 +4,9 @@
 One command, nothing by hand:
 
 ```bash
-make final-run                                           # all bundled campaigns (~20 min)
+make final-run                                           # all bundled campaigns (~20 min), exit 1 on any FAIL
 CAMPAIGNS="thermal_runaway sensor_stuck_cell3" make final-run
-KEEP=1 make final-run                                    # leave the stack running afterwards (SOVD on :7690)
+KEEP=1 make final-run                                    # leave the stack running (report :8082/ui/, SOVD :7690)
 ```
 
 Needs `podman`, `jq`, `curl` and Ankaios ≥ 1.0 (`ank`, `ank-server`, `ank-agent`). No root, no systemd service:
@@ -17,33 +17,31 @@ config files here (not `/etc/ankaios`, which may hold a demo startup manifest) a
 
 1. `podman build` of every service image `localhost/rom/<service>:dev` (+ `databroker` with the VSS overlay baked in)
 2. podman network `rom` (containers find each other by `--network-alias`, same names as in compose) and fresh
-   volumes: `rom-iceoryx2-shm` + `rom-iceoryx2` (tmpfs, shared by dfm and opensovd), `rom-dfm-storage`
-3. `ank apply` [`rom.yaml`](rom.yaml): mosquitto, databroker, simulator, vss-uprotocol-client, dfm, guardian, opensovd
-   (start order by Ankaios `dependencies`, `restartPolicy: ALWAYS`)
-4. workload `campaigns` (fault-injector, `restartPolicy: NEVER`): every campaign one after the other, `SETTLE_S`
-   (15 s) before the first and after each; exit code 1 if any campaign did not complete
-5. evidence: `ank logs` of every workload + the SOVD fault list, into `runs/<RUN_ID>/`
-6. workload `evidence-collector` with `runs/<RUN_ID>` mounted at `/evidence`
-7. teardown: workloads deleted, server + agent stopped
+   volumes: `rom-iceoryx2-shm` + `rom-iceoryx2` (tmpfs, shared by dfm and opensovd), `rom-dfm-storage`,
+   `rom-evidence-data`, so DTCs and verdicts are only this run's
+3. `ank apply` [`rom.yaml`](rom.yaml): mosquitto, databroker, simulator (with the cooling actuator),
+   vss-uprotocol-client, dfm, guardian, opensovd, evidence-collector (start order by Ankaios `dependencies`,
+   `restartPolicy: ALWAYS`); the script waits for SOVD and the collector's `/health`
+4. workload `campaigns` (fault-injector, `restartPolicy: NEVER`, campaign events over uProtocol to the collector):
+   every campaign one after the other, `SETTLE_S` (15 s) before the first and after each
+5. the collector judges every run live ([`services/evidence-collector`](../../services/evidence-collector/README.md));
+   the script waits for one record per `campaign_end`, then saves verdicts, summary and the evidence bundle
+6. `ank logs` of every workload + the SOVD fault list, as a backup of the raw evidence
+7. teardown: workloads deleted, server + agent stopped; exit code 1 if any verdict is FAIL
 
-## Evidence directory (input of the evidence collector)
+## Output
 
 ```
-runs/<RUN_ID>/                    mounted at /evidence      env: EVIDENCE_DIR=/evidence, RUN_ID, SOVD_URL
-  run.json                        {"run_id", "campaigns_state", "ankaios"}
-  sovd_faults.json                GET /sovd/v1/apps/battery_guardian/faults after the last campaign
-  logs/campaigns.log              fault-injector: campaign_start (hazard, safety_goal, expected_*, max_detect_ms),
-                                  fault_injected / fault_cleared, campaign_end, all with run_id
-  logs/guardian.log               state_change, reason_change, fault_event (code, stage, msg_id, run_id)
-  logs/dfm.log                    fault_record (code, stage, run_id, latency_ms) + dfm_bin text lines
-  logs/<other workload>.log       simulator, vss-uprotocol-client, opensovd, databroker, mosquitto
-  ankaios/                        generated manifests, server / agent logs
+runs/<RUN_ID>/
+  evidence.json          every evidence record (verdict, reasons, detection, mitigation, diagnostics, trace)
+  summary.json           pass rate, coverage per safety goal, slowest detection
+  evidence-bundle.zip    the collector's bundle: records, events.jsonl lines, safety case, report.html, SHA-256 manifest
+  run.json               run id, campaigns workload state, Ankaios version, summary
+  sovd_faults.json       GET /sovd/v1/apps/battery_guardian/faults after the last campaign
+  logs/<workload>.log    ank logs of every workload
+  ankaios/               generated campaigns manifest, server / agent logs
   build.log
 ```
-
-Log files are JSON lines mixed with plain text lines (dfm_bin, databroker): parse line by line, skip what is not JSON.
-The collector writes its report into the same directory (e.g. `report.json`, `report.md`); SOVD is still up while
-it runs (`SOVD_URL=http://opensovd:7690/sovd`).
 
 ## Limits
 

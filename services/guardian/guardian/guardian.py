@@ -14,6 +14,9 @@ databroker, the adapter / simulator or the physical chip. A lost heartbeat makes
 short reason ("uP link lost", "KUKSA down", "adapter down", "sim down", "chip silent") and the DFM code of the root
 cause (the one closest to the guardian). See heartbeats.py.
 
+The state goes out on up://<UP_AUTHORITY>/1002/1/8006 (StateEvent) on every change and every STATE_PERIOD_S, for
+the evidence collector.
+
 Input comes over uProtocol (rom_uprotocol, Zenoh) from the VSS uProtocol Client, never from the
 KUKSA Databroker directly (challenge architecture rule): KUKSA -> vss-uprotocol-client -> guardian.
 
@@ -21,7 +24,7 @@ Run:
   rom-guardian              test scenario, offline, instant   (or: python -m guardian.guardian)
   rom-guardian --fault-events  test scenario as fault events (services/dfm/fixtures/guardian_events.jsonl)
   rom-guardian --uprotocol  live: cells from up://<UP_AUTHORITY>/1001/1/8002, heartbeats from .../8004,
-                            faults to .../1002/1/8003
+                            faults to .../1002/1/8003, state to .../1002/1/8006
   make guardian             databroker + simulator + vss-uprotocol-client + guardian in compose
 """
 import os
@@ -43,6 +46,7 @@ from .heartbeats import HeartbeatMonitor
 
 MITIGATING = "MITIGATING"
 DISPLAY_PERIOD_S = 1.0  # re-publish the display command this often: fresh temp_c, and proof the guardian is alive
+STATE_PERIOD_S = 1.0    # re-publish the state event this often: a collector that starts late still learns the state
 TICK_S = 0.5
 
 # Thresholds come from rom_common.config (env: WARN_C, CRIT_C, STALE_MS, STUCK_S, MIN/MAX_PLAUSIBLE_C),
@@ -274,15 +278,34 @@ def fault_publisher(transport, log):
     return SignalPublisher(transport.send_sync, uris.guardian_fault_topic(), ttl_ms=0, log=log)
 
 
+def state_publisher(transport):
+    """StateEvent on up://<authority>/1002/1/8006 for the evidence collector. Not logged per message (every second),
+    the state_change / reason_change log lines already say the same."""
+    from rom_uprotocol import uris
+    from rom_uprotocol.publisher import SignalPublisher
+
+    return SignalPublisher(transport.send_sync, uris.guardian_state_topic(), ttl_ms=0)
+
+
+def publish_state(publisher, state: str, previous: str, reason: str, fields: dict) -> None:
+    from rom_uprotocol.contract import StateEvent, build_state_event
+
+    event = StateEvent(state=state, previous=previous, reason=reason, ts_ms=clock.now_ms(), temp_c=fields["temp_c"],
+                       cell=fields["cell"], cells=fields["cells"], seq=fields["seq"], msg_id=fields["msg_id"],
+                       run_id=fields["run_id"])
+    publisher.publish_json(lambda seq, ts: build_state_event(event))
+
+
 def run_uprotocol():
     log = jsonlog.get_logger("guardian")
     samples = queue.Queue()
     transport = subscribe_inputs(samples, log)  # keep a reference, or the Zenoh session is closed
     faults_out = fault_publisher(transport, log)
+    states_out = state_publisher(transport)
     from rom_common import mqtt  # only the live mode needs paho
     display = mqtt.MqttClient(f"rom-guardian-{os.getpid()}").connect()  # display commands for the device OLED
     try:
-        loop(samples, log, display, faults_out)
+        loop(samples, log, display, faults_out, states_out)
     finally:
         display.close()
         transport.close_sync()  # an open Zenoh session keeps the process alive after SIGTERM
@@ -328,7 +351,7 @@ def report_faults(g: Guardian, before: Mapping[str, Optional[int]], last, log, p
             publisher.publish_json(lambda seq, ts, e=event: build_fault_event(e), code=code, stage=stage)
 
 
-def loop(samples, log, display=None, faults_out=None):
+def loop(samples, log, display=None, faults_out=None, states_out=None):
     from rom_uprotocol.subscriber import HeartbeatSample
 
     hb = config.heartbeat()
@@ -337,7 +360,7 @@ def loop(samples, log, display=None, faults_out=None):
     last = None  # last cell message: its msg_id/seq/run_id link a state change or fault to the message behind it
     trigger = None  # whatever arrived last (cell message or heartbeat): what a state change is attributed to
     last_reason = None
-    display_seq, last_display = 0, 0.0
+    display_seq, last_display, last_state_out = 0, 0.0, 0.0
     # Tick even without samples, otherwise a dead sensor would never be detected as stale.
     while True:
         cells = None
@@ -363,11 +386,15 @@ def loop(samples, log, display=None, faults_out=None):
         elif reason != last_reason and last_reason is not None:
             # same state, new cause (e.g. SENSOR_FAULT "chip silent" -> "KUKSA down"): the root cause can sharpen
             log.log("reason_change", state=state, previous_reason=last_reason, **fields)
+        tick = time.monotonic()
+        if states_out is not None and (state != before or reason != last_reason
+                                       or tick - last_state_out >= STATE_PERIOD_S):
+            last_state_out = tick
+            publish_state(states_out, state, before, reason, fields)
         last_reason = reason
         if g.faults != faults_before:
             report_faults(g, faults_before, last, log, faults_out, trigger)
         # State shown on the device display (QoS 1, retained): on every change and as a heartbeat.
-        tick = time.monotonic()
         if display is not None and (state != before or tick - last_display >= DISPLAY_PERIOD_S):
             display_seq, last_display = display_seq + 1, tick
             display.publish(TOPIC_DISPLAY_CMD, display_cmd(state, g.temp, reason, display_seq, clock.now_ms()),

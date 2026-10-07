@@ -29,6 +29,7 @@ could not be cleared), `2` invalid campaign or missing URL. Faults are cleared o
 |---|---|---|
 | `SIMULATOR_URL` | `http://127.0.0.1:8080` | simulator API ([simulator README](../simulator/README.md)) |
 | `PUBLISHER_URL` | – | vss-uprotocol-client fault API, needed by campaigns with `target: publisher` |
+| `UP_CAMPAIGN_EVENTS` | – | `1` (or `--uprotocol`): every log event below also goes out on `up://<UP_AUTHORITY>/1003/1/8005` for the [evidence collector](../evidence-collector/README.md); needs `pip install './services/fault-injector[uprotocol]'`, set in compose. Waits `ZENOH_SETTLE_MS` (1000) for Zenoh to connect first |
 
 ## Campaign file
 
@@ -87,8 +88,9 @@ their first beat), so run them against a stack that has been up for a few second
 
 `campaign_start` (hazard, safety_goal, expected_state, expected_faults, max_detect_ms, seed, baseline, faults), `fault_injected`,
 `fault_cleared` (`scheduled` / `campaign_end`), `fault_failed`, `campaign_end` (`completed` / `aborted` /
-`interrupted`). The runner does not judge the run: comparing the guardian's `state_change` events with
-`expected_state` and `max_detect_ms`, and checking `expected_faults` in OpenSOVD, is the evidence collector's job.
+`interrupted`). The runner does not judge the run: comparing the guardian's state (`…/1002/1/8006`) with
+`expected_state` and `max_detect_ms`, and checking `expected_faults` in OpenSOVD, is the
+[evidence collector](../evidence-collector/README.md)'s job.
 
 ## Test
 
