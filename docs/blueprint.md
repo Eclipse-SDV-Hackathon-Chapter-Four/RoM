@@ -87,8 +87,8 @@ the display command, and set `ADAPTER_CELL` to the cell it replaces. Firmware an
 ## Status and limits
 
 - **Verified:** 22 campaigns under Ankaios (20 PASS, 1 FAIL on purpose, 1 fixed and PASS on rerun); CI on every PR, including
-  the ThreadX firmware build. The campaigns ran with the simulator; the AZ3166 loop (sensor in, guardian state on the OLED)
-  was verified by hand on the real board.
+  the ThreadX firmware build. The full Ankaios run used the simulator; the campaigns were also run with the AZ3166 as
+  cell 1 (`make hw`: sensor in, guardian state on the OLED).
 - **Not yet:** AutoSD as the runtime ([#24](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/24)),
   remote reruns with openDUT ([#25](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/25)), a CAN trace
   source through the KUKSA CAN Provider ([#22](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/22)).
