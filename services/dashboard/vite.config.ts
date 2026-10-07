@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import evidenceReport from "./vite/evidence-report.mjs";
+import scenarios from "./vite/scenarios.mjs";
 
 // The Evidence Collector sends no CORS headers, so the browser talks to it through this same-origin proxy:
 // /evidence-api/events -> $EVIDENCE_API_TARGET/events (default http://localhost:8082). Dev server and preview only.
@@ -15,7 +16,8 @@ export default defineConfig(({ mode }) => {
   };
   return {
     // /evidence-report/{meta.json,report.html}: the generated report of the newest completed final run (runs/<id>/)
-    plugins: [react(), evidenceReport()],
+    // /api/scenarios/{,status,run}: starts ONE bundled fault campaign of the running stack (ROM_RUNTIME_REPO), local demo only
+    plugins: [react(), evidenceReport(), scenarios()],
     server: { host: true, port: 5173, proxy },
     preview: { proxy },
   };

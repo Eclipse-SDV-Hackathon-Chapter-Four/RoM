@@ -7,6 +7,7 @@ import LastMessageCard from "./LastMessageCard";
 import RecentEvents from "./RecentEvents";
 import LiveStatus from "./LiveStatus";
 import DemoControls from "./DemoControls";
+import ScenarioRunner from "./ScenarioRunner";
 import DataSourcesCard from "./DataSourcesCard";
 import SystemFlow from "./SystemFlow";
 import BatteryCellsCard from "./BatteryCellsCard";
@@ -79,6 +80,7 @@ export default function Dashboard({ source, view }: { source: DashboardDataSourc
       <div className="live-view" hidden={view !== "live"}>
       <div className="demo-bar">
         <LiveStatus live={live} label={live ? "Hardware + simulator" : "Simulated telemetry"} connected={!(live && error)} />
+        {live && <ScenarioRunner />}
         {source.demo && <DemoControls support={source.demo} override={data?.demo_override ?? null} onApply={applyDemo} onResume={resumeDemo} />}
       </div>
 

@@ -57,6 +57,16 @@ h1, h2, p, dl, dd { margin: 0; }
 /* ---------- scenario controls ---------- */
 .demo-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px; padding: 12px 26px 0; min-height: 50px; }
 .demo-bar .scenarios { padding: 0; }
+.scenario-runner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+.scenario-label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px; }
+.scenario-select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--card-border); background: var(--card); color: var(--text); max-width: 100%; }
+.scenario-select:disabled { opacity: 0.5; cursor: not-allowed; }
+.scenario-select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.scenario-status { font-size: 13px; color: var(--muted); }
+.scenario-status.running { color: #ffd98a; }
+.scenario-status.ok { color: #6fe3a0; }
+.scenario-status.bad { color: #ff8a8e; }
+.scenario-detail { white-space: pre-wrap; flex-basis: 100%; font-size: 12px; }
 .live-status { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .live-status strong { letter-spacing: 0.6px; color: #6fe3a0; }
 .live-sub { color: var(--muted); }

@@ -42,6 +42,13 @@ The compose mosquitto needs host port 1883 (the AZ3166 board publishes there). I
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every PR: `make test`, the DFM build with
 `cargo test` and a fixture check against a real `dfm_bin`, all service images, and the AZ3166 ThreadX firmware.
 
+## Dashboard (gui branch)
+
+`make guardian` in one terminal, `make dashboard` in another, then <http://localhost:5173/#/live> (Live Monitoring with a
+**Run Scenario** control that starts a real fault campaign) and <http://localhost:5173/#/evidence> (Safety Evidence: the
+Evidence Collector's report of a saved run, `make evidence-snapshot`). No Node.js needed, only Docker. Setup, the list of
+scenarios, evidence snapshots and troubleshooting: [`services/dashboard/README.md`](services/dashboard/README.md).
+
 ## All commands
 
 | Command | What it does |
@@ -65,6 +72,8 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every PR: `m
 | `make logs` | follow databroker, mosquitto and simulator logs |
 | `make test` | run all tests (`libs/`, `services/`) in the dev image |
 | `make shell` | bash inside the Python image |
+| `make dashboard` / `make dashboard-stop` | dashboard dev server in Docker on `localhost:5173` (needs the stack from `make guardian`); stop it |
+| `make evidence-snapshot` | save the collector's evidence as `runs/<timestamp>/` (gitignored) for the dashboard's Safety Evidence view, bundle verified |
 | `make down` | stop everything |
 
 ## Without Docker (local Python)

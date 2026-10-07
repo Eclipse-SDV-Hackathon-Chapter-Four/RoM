@@ -10,7 +10,7 @@ PY = $(VENV)/bin/python
 MQTT_HOST_PORT ?= 1883
 export MQTT_HOST_PORT
 
-.PHONY: evidence-ci help mqtt-restart up down logs kuksa sim sim-up guardian campaign campaigns campaigns-all evidence evidence-bundle adapter hw sovd sovd-faults dfm-faults dfm-fixtures final-run images venv sim-local test-local shell test
+.PHONY: evidence-ci help mqtt-restart up down logs kuksa sim sim-up guardian campaign campaigns campaigns-all evidence evidence-bundle adapter hw sovd sovd-faults dfm-faults dfm-fixtures final-run dashboard dashboard-stop evidence-snapshot images venv sim-local test-local shell test
 
 help:   ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -104,6 +104,15 @@ dfm-fixtures: ## regenerate services/dfm/fixtures: guardian test scenario -> eve
 	$(DC) --profile tools build dfm
 	$(firstword $(DC_BIN)) run --rm localhost/rom/dfm:dev sh -c 'dfm_bin --catalog-dir /etc/rom/catalog --storage-dir /tmp/dfm >/dev/null 2>&1 & \
 	  rom-dfm replay /etc/rom/fixtures/guardian_events.jsonl >/dev/null && rom-dfm query --stable' > services/dfm/fixtures/battery_guardian_faults.json
+
+dashboard: ## dashboard dev server in Docker on http://localhost:5173 (Live Monitoring, Safety Evidence, Run Scenario); needs the stack (make guardian)
+	scripts/dashboard-dev.sh start
+
+dashboard-stop: ## stop the dashboard dev container
+	scripts/dashboard-dev.sh stop
+
+evidence-snapshot: ## save the collector's evidence as runs/<timestamp>/ (evidence.json, summary.json, evidence-bundle.zip, bundle/) for the dashboard's Safety Evidence view
+	scripts/evidence_snapshot.sh
 
 final-run: ## final orchestrated run under Eclipse Ankaios (podman): stack + all campaigns + evidence -> runs/<id>/ (CAMPAIGNS="a b", KEEP=1)
 	scripts/final_run.sh
