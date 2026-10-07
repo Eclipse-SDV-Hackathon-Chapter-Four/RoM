@@ -7,7 +7,7 @@ from .contracts import VSS_BATTERY_TEMP
 
 
 def open_client():
-    """Return a connected VSSClient (caller keeps it open; call .close() on exit)."""
+    """Return a connected VSSClient (caller keeps it open; call .disconnect() on exit)."""
     from kuksa_client.grpc import VSSClient
 
     ep = config.endpoints()

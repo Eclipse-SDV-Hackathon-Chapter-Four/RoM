@@ -14,12 +14,13 @@ MCU sensor --MQTT--> adapter --gRPC set--> KUKSA Databroker
 From the repo root:
 
 ```bash
-make up                                              # mosquitto + databroker
-make venv                                            # or: make shell (dev image)
-.venv/bin/rom-adapter
+make hw                                              # whole hardware chain in compose: mosquitto + databroker + adapter
+                                                     #   + vss-uprotocol-client + guardian (stops the simulator)
+make adapter                                         # only the adapter, foreground
 ```
 
-Inside the dev container (`make shell`) `MQTT_HOST`/`KUKSA_HOST` already point to the compose services.
+Without containers: `make up`, `make venv`, then `.venv/bin/rom-adapter`.
+Only one writer of the VSS path at a time: run the adapter **or** the simulator, not both.
 
 > If port 1883 is already taken by a system `mosquitto` service (`systemctl is-active mosquitto`),
 > `make up` fails with "address already in use". Either stop it (`sudo systemctl stop mosquitto`) or use it. Note that the default system config
@@ -86,6 +87,6 @@ Definition of Done from `PLAN.md` is met; what is left before and after the merg
 - [ ] Root `README.md`: how to run the whole MVP
 
 **After the MVP**
-- [ ] Container for the adapter (service in `infra/docker-compose.yml`, built from `infra/Dockerfile`)
+- [x] Container for the adapter (service `adapter` in `infra/docker-compose.yml`, dev image; `make hw`)
 - [ ] Optional: forward `rom/sensor/battery/status` (`online`/`offline`) so the guardian can tell
       "sensor offline" apart from a stale value

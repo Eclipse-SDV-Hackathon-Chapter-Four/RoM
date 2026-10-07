@@ -7,7 +7,7 @@ DC = $(DC_BIN) -f infra/docker-compose.yml
 VENV = .venv
 PY = $(VENV)/bin/python
 
-.PHONY: help up down logs kuksa sim sim-up guardian images venv sim-local test-local shell test
+.PHONY: help up down logs kuksa sim sim-up guardian adapter hw images venv sim-local test-local shell test
 
 help:   ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -19,7 +19,7 @@ down:   ## stop everything
 	$(DC) --profile tools --profile todo down
 
 logs:   ## follow databroker + mosquitto logs
-	$(DC) --profile tools logs -f databroker mosquitto simulator vss-uprotocol-client guardian
+	$(DC) --profile tools logs -f databroker mosquitto simulator adapter vss-uprotocol-client guardian
 
 kuksa:  ## interactive kuksa-client shell in the foreground (starts databroker if needed)
 	$(DC) run --rm kuksa-client
@@ -33,6 +33,14 @@ sim-up: ## databroker + simulator in the background; then `make kuksa` in anothe
 guardian: ## databroker + simulator + vss-uprotocol-client + guardian, follows guardian logs (Ctrl+C stops following)
 	$(DC) --profile tools up -d --build databroker simulator vss-uprotocol-client guardian
 	$(DC) --profile tools logs -f guardian
+
+adapter: ## MQTT -> KUKSA adapter in the foreground (starts databroker + mosquitto; stop the simulator first)
+	$(DC) --profile tools run --rm adapter
+
+hw:     ## hardware run: AZ3166 -> mosquitto -> adapter -> databroker -> vss-uprotocol-client -> guardian (no simulator)
+	$(DC) --profile tools stop simulator
+	$(DC) --profile tools up -d --build databroker mosquitto adapter vss-uprotocol-client guardian
+	$(DC) --profile tools logs -f adapter guardian
 
 images: ## build the service images localhost/rom/<service>:dev (ready for podman / Ankaios)
 	$(DC) --profile tools --profile todo build vss-uprotocol-client guardian fault-injector dfm opensovd evidence-collector

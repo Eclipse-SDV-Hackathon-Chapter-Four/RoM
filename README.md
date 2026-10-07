@@ -16,7 +16,7 @@ Every component is its own pip package; services that run under Ankaios have the
 | `services/vss-uprotocol-client` | `vss_uprotocol_client` | ✅ | KUKSA Databroker → uProtocol |
 | `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (uProtocol input; display command out over MQTT) |
 | `services/simulator` | `simulator` | dev image | sine-wave temperature into KUKSA |
-| `services/adapter` | `adapter` | dev image | MQTT → KUKSA |
+| `services/adapter` | `adapter` | dev image (`make hw`) | MQTT → KUKSA |
 | `services/fault-injector` | `fault_injector` | ✅ TODO | Fault Campaign Runner |
 | `services/dfm` | `dfm` | ✅ TODO | Diagnostic Fault Manager |
 | `services/opensovd` | – | ✅ TODO | Eclipse OpenSOVD server |
@@ -41,6 +41,8 @@ make down                        # stop everything
 | `make up` | start databroker + mosquitto in the background |
 | `make guardian` | databroker + simulator + vss-uprotocol-client + guardian, follow guardian logs |
 | `make images` | build all service images `localhost/rom/<service>:dev` |
+| `make hw` | hardware run: AZ3166 → mosquitto → adapter → databroker → vss-uprotocol-client → guardian (no simulator), follow adapter + guardian logs |
+| `make adapter` | MQTT → KUKSA adapter in the foreground |
 | `make sim` | sine-wave simulator into KUKSA (foreground) |
 | `make sim-up` | databroker + simulator in the background |
 | `make kuksa` | interactive kuksa-client shell (`getValue Vehicle.Powertrain.TractionBattery.Temperature.Max`) |
@@ -70,6 +72,7 @@ pytest -q
 | `MQTT_HOST` / `MQTT_PORT` | `localhost` / `1883` | all |
 | `SIM_HZ`, `SIM_PERIOD_S`, `SIM_MIN_C`, `SIM_MAX_C` | `2`, `120`, `30`, `69` | simulator |
 | `WARN_C`, `CRIT_C` | `38`, `45` | guardian |
+| `STALE_MS`, `STUCK_S`, `MIN_PLAUSIBLE_C`, `MAX_PLAUSIBLE_C` | `2000`, `10`, `-40`, `150` | guardian (`STALE_MS` is also the uProtocol TTL) |
 | `VSS_SOURCE_PATH` | `Vehicle.Powertrain.TractionBattery.Temperature.Max` | vss-uprotocol-client |
 | `UP_AUTHORITY`, `UP_TRANSPORT`, `ZENOH_MODE`, `ZENOH_CONNECT`, `ZENOH_LISTEN` | `rom-vehicle`, `zenoh`, `peer`, –, – | vss-uprotocol-client, guardian |
 
@@ -77,7 +80,7 @@ pytest -q
 
 `CLEAR` (no data yet) → `MONITORING` → `WARNING` (≥ `WARN_C`) → `CRITICAL` (≥ `CRIT_C`) → `MITIGATING`
 (→ `CRITICAL` "mitigation failed" if still hot after 5 s). `SENSOR_FAULT` if the signal is stale (2 s),
-stuck (10 s) or out of range (−40…100 °C).
+stuck (10 s) or out of range (−40…150 °C).
 
 ## AZ3166 hardware node: sensor telemetry over MQTT
 

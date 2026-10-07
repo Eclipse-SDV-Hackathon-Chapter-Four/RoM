@@ -38,8 +38,8 @@ class Thresholds:
 def thresholds() -> Thresholds:
     """Guardian thresholds; defaults come from the contract, overridable via env."""
     return Thresholds(
-        warn_c=float(_env("WARN_C", "45.0")),
-        crit_c=float(_env("CRIT_C", "55.0")),
+        warn_c=float(_env("WARN_C", "38.0")),
+        crit_c=float(_env("CRIT_C", "45.0")),
         hyst_c=float(_env("HYST_C", "2.0")),
         stale_ms=int(_env("STALE_MS", "2000")),
         stuck_s=float(_env("STUCK_S", "10")),

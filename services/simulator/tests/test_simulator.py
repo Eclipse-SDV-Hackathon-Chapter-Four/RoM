@@ -64,9 +64,9 @@ def test_run_forever_stops_on_ctrl_c():
 
 def test_main_writes_to_kuksa_vss_path(monkeypatch):
     calls = []
-    class FakeClient:
+    class FakeClient:  # mirrors kuksa_client.grpc.VSSClient, see test_vss_client_has_disconnect
         closed = False
-        def close(self): self.closed = True
+        def disconnect(self): self.closed = True
     fake = FakeClient()
     monkeypatch.setattr(simulator.kuksa, "open_client", lambda: fake)
     monkeypatch.setattr(simulator.kuksa, "set_temp", lambda c, t: calls.append((c, t)))
@@ -74,6 +74,12 @@ def test_main_writes_to_kuksa_vss_path(monkeypatch):
     simulator.main(["--hz", "1", "--period", "4", "--duration", "4"])
     assert [t for _, t in calls] == [30.0, 49.5, 69.0, 49.5]
     assert all(c is fake for c, _ in calls) and fake.closed
+
+
+def test_vss_client_has_disconnect():
+    # The fake above must not drift from the real client (it once had close(), which VSSClient lacks).
+    from kuksa_client.grpc import VSSClient
+    assert callable(getattr(VSSClient, "disconnect", None))
 
 
 def test_main_rejects_bad_range():

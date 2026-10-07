@@ -44,6 +44,19 @@ services:
       SIM_PERIOD_S: ${SIM_PERIOD_S:-120}
     depends_on: [databroker]
 
+  adapter:
+    profiles: ["tools"]          # MQTT (AZ3166 board, rom/sensor/battery/temp) -> KUKSA; replaces the simulator
+    image: rom-python
+    build: *pyimage
+    working_dir: /app
+    volumes: ["..:/app:z"]
+    command: rom-adapter
+    restart: on-failure
+    environment:
+      MQTT_HOST: mosquitto
+      KUKSA_HOST: databroker
+    depends_on: [databroker, mosquitto]
+
   # --- Service images (services/*/Dockerfile): self-contained, no bind mounts, env-only config ---
   vss-uprotocol-client:
     profiles: ["tools"]          # KUKSA -> uProtocol over Zenoh (topic up://rom-vehicle/1001/1/8001)
