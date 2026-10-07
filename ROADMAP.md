@@ -4,7 +4,11 @@
 **Idea:** a portable *Safety Evidence Factory* around the Battery Thermal Guardian. Every injected fault
 must leave a traceable trail: **hazard → safety goal → injected fault → detection → mitigation → verdict**.
 
-## Target architecture
+## Architecture
+
+Implemented today: the sensor path AZ3166 → MQTT → adapter → KUKSA → uProtocol → Guardian, and the display
+feedback path Guardian → MQTT `rom/actuator/display/cmd` → AZ3166 OLED (the display command does **not** travel over
+uProtocol). The Fault Campaign Runner, CAN provider, DFM, OpenSOVD, Evidence Collector and Ankaios are still planned.
 
 ```mermaid
 flowchart LR
@@ -16,7 +20,7 @@ flowchart LR
   KDB --> PUB[VSS uProtocol Publisher]
   FI[Fault Campaign Runner] -->|inject| PUB
   PUB -->|uProtocol / Zenoh| G[Battery Thermal Guardian]
-  G -->|state · heartbeat · mitigation over uProtocol| DISP[Display / actuator]
+  G -->|MQTT rom/actuator/display/cmd| DISP[AZ3166 OLED, same board as the sensor]
   G --> DFM[DFM fault records]
   DFM --> SOVD[Eclipse OpenSOVD]
   SOVD --> EV[Evidence Collector → verdict report]
@@ -31,15 +35,15 @@ flowchart LR
 - [x] Guardian state machine: CLEAR → MONITORING → WARNING → CRITICAL → MITIGATING, plus SENSOR_FAULT (stale / stuck / out of range)
 - [x] MQTT → KUKSA adapter with contract validation and sequence-gap detection
 - [x] Eclipse ThreadX firmware on AZ3166 publishing sensor telemetry over MQTT
+- [x] ThreadX firmware integrated into `main` and aligned with the sensor contract (`rom/sensor/battery/temp`, retained status + Last Will), with automatic MQTT broker reconnect
+- [x] Guardian state shown on the AZ3166 OLED (Guardian → MQTT `rom/actuator/display/cmd`)
 - [x] Containerized dev stack, `make` shortcuts, unit tests per component
 - [x] uProtocol extracted into a reusable library (`libs/rom-uprotocol`); every component is its own pip package, services have their own image (ready for Ankaios)
 
 ## Next
 
 ### 1. Sources
-- [ ] Bring the ThreadX firmware into `main` and align it with the sensor contract — real hardware end-to-end
 - [ ] KUKSA CAN Provider with `.asc` replay as an additional source
-- [ ] Guardian state shown on the device display
 
 ### 2. Fault campaigns
 - [ ] Fault Campaign Runner inside the uProtocol publisher, campaigns described in YAML with a seed (deterministic, replayable)
