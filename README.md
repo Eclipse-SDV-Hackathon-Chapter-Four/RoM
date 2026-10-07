@@ -1,7 +1,10 @@
 <!-- Made with Claude (Claude Code, Anthropic) -->
 # RoM — Battery Thermal Guardian
 
-Sensor / simulator → KUKSA Databroker → VSS uProtocol Client → (uProtocol over Zenoh) → Guardian → display.
+[![CI](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/actions/workflows/ci.yml/badge.svg)](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/actions/workflows/ci.yml)
+
+Sensor / simulator → KUKSA Databroker → VSS uProtocol Client → (uProtocol over Zenoh) → Guardian → display,
+and Guardian → (uProtocol) → DFM fault records (Eclipse OpenSOVD fault-lib).
 The guardian never reads the databroker directly. Everything runs in Docker; you only need `docker compose` and `make`.
 
 ## Repository layout
@@ -14,11 +17,11 @@ Every component is its own pip package; services that run under Ankaios have the
 | `libs/rom-common` | `rom_common` | – | contracts, config, JSON logging, KUKSA / MQTT helpers |
 | `libs/rom-uprotocol` | `rom_uprotocol` | – | uProtocol library: Zenoh transport, URIs, publisher, subscriber |
 | `services/vss-uprotocol-client` | `vss_uprotocol_client` | ✅ | KUKSA Databroker → uProtocol |
-| `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (uProtocol input; display command and DFM fault events out over MQTT) |
+| `services/guardian` | `guardian` | ✅ | Battery Thermal Guardian (uProtocol in, DFM fault events out over uProtocol; display command over MQTT) |
 | `services/simulator` | `simulator` | dev image | sine-wave temperature into KUKSA |
 | `services/adapter` | `adapter` | dev image (`make hw`) | MQTT → KUKSA |
 | `services/fault-injector` | `fault_injector` | ✅ TODO | Fault Campaign Runner |
-| `services/dfm` | `rom_dfm` (Rust) | ✅ | Diagnostic Fault Manager: fault-lib `dfm_bin` + guardian fault events (MQTT) → fault records |
+| `services/dfm` | `rom_dfm` (Rust) | ✅ | Diagnostic Fault Manager: fault-lib `dfm_bin` + guardian fault events (uProtocol) → fault records |
 | `services/opensovd` | – | ✅ TODO | Eclipse OpenSOVD server |
 | `services/evidence-collector` | `evidence_collector` | ✅ TODO | Evidence Collector → verdicts |
 | `MXChip/AZ3166` | – (C firmware) | – | AZ3166 board on Eclipse ThreadX: sensor telemetry over MQTT, guardian state on its OLED |
@@ -32,6 +35,12 @@ make down                        # stop everything
 ```
 
 `Ctrl+C` only stops following the logs; the stack keeps running until `make down`.
+
+The compose mosquitto needs host port 1883 (the AZ3166 board publishes there). If a host broker already holds it,
+`make` stops with a hint: `sudo systemctl stop mosquitto`, or `MQTT_HOST_PORT=1884 make guardian` (simulator only).
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every PR: `make test`, the DFM build with
+`cargo test` and a fixture check against a real `dfm_bin`, all service images, and the AZ3166 ThreadX firmware.
 
 ## All commands
 
@@ -72,6 +81,7 @@ pytest -q
 |---|---|---|
 | `KUKSA_HOST` / `KUKSA_PORT` | `127.0.0.1` / `55555` | all |
 | `MQTT_HOST` / `MQTT_PORT` | `localhost` / `1883` | all |
+| `MQTT_HOST_PORT` | `1883` | compose mosquitto host port (`make`) |
 | `SIM_HZ`, `SIM_PERIOD_S`, `SIM_MIN_C`, `SIM_MAX_C` | `2`, `120`, `30`, `69` | simulator |
 | `WARN_C`, `CRIT_C` | `38`, `45` | guardian |
 | `STALE_MS`, `STUCK_S`, `MIN_PLAUSIBLE_C`, `MAX_PLAUSIBLE_C` | `2000`, `10`, `-40`, `150` | guardian (`STALE_MS` is also the uProtocol TTL) |
@@ -248,7 +258,8 @@ flowchart LR
 - [ ] Combined multi-fault scenarios
 
 #### 3. Guardian
-- [ ] Publish state, heartbeat, fault and mitigation events over uProtocol
+- [x] Publish fault events over uProtocol (`up://rom-vehicle/1002/1/8001` → DFM, Python ↔ Rust `up-transport-zenoh`)
+- [ ] Publish state, heartbeat and mitigation events over uProtocol
 - [ ] Detect duplicate / reordered messages and implausible rate of change
 - [ ] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event
 
@@ -270,7 +281,8 @@ flowchart LR
 
 #### 7. Blueprint & community
 - [ ] Reusable package another team can run with one command
-- [ ] CI pipeline running tests and campaigns on every PR
+- [x] CI pipeline on every PR: tests, DFM fixture check, service images, ThreadX firmware
+- [ ] CI runs the fault campaigns
 - [ ] Upstream contribution: update `up-transport-zenoh-python` to zenoh 1.x and the current up-spec
 - [ ] SDV Blueprint proposal
 

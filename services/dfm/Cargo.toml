@@ -15,5 +15,8 @@ common = { path = "../common" }
 fault_lib = { path = "../fault_lib" }
 dfm_lib = { path = "../dfm_lib" }
 iceoryx2-bb-container.workspace = true
-rumqttc = "0.24"
 serde_json = "1"
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+up-rust = { version = "0.9", default-features = false }
+up-transport-zenoh = "0.9.1"

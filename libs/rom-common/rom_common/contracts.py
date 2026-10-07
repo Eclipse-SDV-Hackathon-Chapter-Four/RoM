@@ -13,12 +13,10 @@ VSS_BATTERY_TEMP = "Vehicle.Powertrain.TractionBattery.Temperature.Max"
 TOPIC_SENSOR_TEMP = "rom/sensor/battery/temp"          # QoS 0, no retain
 TOPIC_SENSOR_STATUS = "rom/sensor/battery/status"      # QoS 1, retain (LWT)
 TOPIC_DISPLAY_CMD = "rom/actuator/display/cmd"         # QoS 1, retain
-TOPIC_GUARDIAN_FAULT = "rom/guardian/fault"            # QoS 1, no retain (-> DFM)
 
 QOS_SENSOR_TEMP = 0
 QOS_SENSOR_STATUS = 1
 QOS_DISPLAY_CMD = 1
-QOS_GUARDIAN_FAULT = 1
 
 # --- Guardian states and reasons -------------------------------------------
 CLEAR = "CLEAR"
@@ -111,7 +109,8 @@ def parse_display_cmd(payload: "bytes | str") -> dict:
 
 def build_fault_event(fault: str, stage: str, ts_ms: int, temp_c: Optional[float], reason: str,
                       seq: Optional[int], msg_id: Optional[str]) -> str:
-    """Payload for TOPIC_GUARDIAN_FAULT; services/dfm turns it into a fault-lib record."""
+    """Guardian fault event, published over uProtocol (up://<authority>/1002/1/8001); services/dfm
+    turns it into a fault-lib record."""
     if fault not in FAULTS or stage not in (FAILED, PASSED):
         raise ContractError(f"unknown_fault_or_stage: {fault} {stage}")
     return json.dumps(

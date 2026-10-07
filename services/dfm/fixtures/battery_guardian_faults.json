@@ -26,7 +26,7 @@
     "env": {
       "reason": "out of range",
       "seq": "22",
-      "temp_c": "150"
+      "temp_c": "200"
     },
     "fault_name": "BatteryTempOutOfRange",
     "occurrence_counter": 1,

@@ -20,7 +20,7 @@ from uprotocol.v1.ustatus_pb2 import UStatus  # noqa: E402
 from rom_common.jsonlog import JsonLogger  # noqa: E402
 from rom_uprotocol import config, uris as topics  # noqa: E402
 from rom_uprotocol import contract as contracts  # noqa: E402
-from rom_uprotocol.publisher import SignalPublisher  # noqa: E402
+from rom_uprotocol.publisher import SignalPublisher, json_message  # noqa: E402
 from rom_uprotocol.subscriber import UpSignalSource  # noqa: E402
 from rom_uprotocol.transport import available_transports, make_transport, register_transport  # noqa: E402
 from rom_uprotocol.transport.zenoh import (  # noqa: E402
@@ -101,6 +101,15 @@ def test_publisher_builds_publish_messages_with_json_payload_and_seq():
     msg = contracts.parse_signal_msg(sent[1].payload)
     assert (msg.value, msg.seq, msg.source_ts_ms) == (51.0, 2, 222)
     assert [e["event"] for e in events()] == ["published", "published"]
+
+
+def test_guardian_fault_topic_and_json_message():
+    topic = topics.guardian_fault_topic("v")
+    assert to_zenoh_key(topic, None, "v") == "up/v/1002/0/1/8001/{}/{}/{}/{}/{}"  # what services/dfm subscribes to
+    msg = json_message(topic, '{"fault":"BatteryTempSignalStale"}')
+    assert msg.attributes.type == UMessageType.UMESSAGE_TYPE_PUBLISH and msg.attributes.source == topic
+    assert msg.attributes.payload_format == UPayloadFormat.UPAYLOAD_FORMAT_JSON
+    assert json.loads(msg.payload)["fault"] == "BatteryTempSignalStale"
 
 
 def test_publisher_logs_failed_send_and_keeps_going():

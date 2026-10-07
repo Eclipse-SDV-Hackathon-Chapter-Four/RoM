@@ -24,9 +24,8 @@ import time
 from rom_common import clock, config, jsonlog
 from rom_common.contracts import (CLEAR, CRITICAL, FAILED, FAULT_MITIGATION_FAILED, FAULT_OUT_OF_RANGE,
                                   FAULT_OVER_TEMP_CRITICAL, FAULT_OVER_TEMP_WARNING, FAULT_SIGNAL_STALE,
-                                  FAULT_SIGNAL_STUCK, MONITORING, PASSED, QOS_DISPLAY_CMD, QOS_GUARDIAN_FAULT,
-                                  SENSOR_FAULT, TOPIC_DISPLAY_CMD, TOPIC_GUARDIAN_FAULT, WARNING, build_display_cmd,
-                                  build_fault_event)
+                                  FAULT_SIGNAL_STUCK, MONITORING, PASSED, QOS_DISPLAY_CMD, SENSOR_FAULT,
+                                  TOPIC_DISPLAY_CMD, WARNING, build_display_cmd, build_fault_event)
 
 MITIGATING = "MITIGATING"
 DISPLAY_PERIOD_S = 1.0  # re-publish the display command this often: fresh temp_c, and proof the guardian is alive
@@ -163,6 +162,20 @@ def subscribe_temp(samples, log):
     return transport
 
 
+def fault_publisher(transport, log):
+    """Fault events -> uProtocol topic up://<authority>/1002/1/8001 (read by services/dfm)."""
+    from rom_uprotocol import uris
+    from rom_uprotocol.publisher import json_message
+
+    topic = uris.guardian_fault_topic()
+
+    def publish(payload):
+        status = transport.send_sync(json_message(topic, payload))
+        if status.code != 0:
+            log.log("fault_publish_failed", error=status.message)
+    return publish
+
+
 def run_uprotocol():
     log = jsonlog.get_logger("guardian")
     samples = queue.Queue()
@@ -170,14 +183,14 @@ def run_uprotocol():
     from rom_common import mqtt  # only the live mode needs paho
     display = mqtt.MqttClient(f"rom-guardian-{os.getpid()}").connect()  # display commands for the device OLED
     try:
-        loop(samples, log, display)
+        loop(samples, log, display, fault_publisher(transport, log))
     finally:
         display.close()
         transport.close_sync()  # an open Zenoh session keeps the process alive after SIGTERM
         log.log("stopped")
 
 
-def loop(samples, log, display=None):
+def loop(samples, log, display=None, publish_fault=None):
     g, start = Guardian(), time.monotonic()
     last = None  # last uProtocol sample: its msg_id/seq link a state change to the message that caused it
     display_seq, last_display = 0, 0.0
@@ -199,10 +212,8 @@ def loop(samples, log, display=None):
             temp_c = round(g.temp, 2)
             seq, msg_id = (last.seq, last.msg_id) if last else (None, None)
             log.log("fault", fault=fault, stage=stage, reason=reason, temp_c=temp_c, seq=seq, msg_id=msg_id)
-            if display is not None:  # same MQTT client as the display command
-                display.publish(TOPIC_GUARDIAN_FAULT,
-                                build_fault_event(fault, stage, clock.now_ms(), temp_c, reason, seq, msg_id),
-                                qos=QOS_GUARDIAN_FAULT)
+            if publish_fault is not None:
+                publish_fault(build_fault_event(fault, stage, clock.now_ms(), temp_c, reason, seq, msg_id))
         active = new
         # State shown on the device display (QoS 1, retained): on every change and as a heartbeat.
         now = time.monotonic()

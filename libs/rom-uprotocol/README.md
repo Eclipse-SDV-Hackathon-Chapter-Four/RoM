@@ -66,6 +66,15 @@ Watch the topic from a terminal: `rom-up-monitor` (or `python -m rom_uprotocol.s
 `seq` lets a consumer detect dropped / duplicated / reordered messages; the uProtocol message id
 (`msg_id`, a UUIDv7) is the correlation ID the guardian logs with every `state_change`.
 
+Guardian fault events (→ DFM, read by `services/dfm` with the Rust `up-transport-zenoh` 0.9.1, so this
+transport and the Rust reference interoperate on the wire):
+
+| | Value |
+|---|---|
+| Topic | `up://<UP_AUTHORITY>/1002/1/8001` (`ue_id` 0x1002 = guardian, resource 0x8001 = fault events) |
+| Zenoh key | `up/rom-vehicle/1002/0/1/8001/{}/{}/{}/{}/{}` |
+| Payload | `rom_common.contracts.build_fault_event`, `UPAYLOAD_FORMAT_JSON` (`publisher.json_message`) |
+
 ## Env variables
 
 | Variable | Default | |

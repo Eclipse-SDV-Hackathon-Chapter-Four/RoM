@@ -6,13 +6,21 @@ DC = $(DC_BIN) -f infra/docker-compose.yml
 # Local virtualenv (no containers for Python): needs only python3 with the venv module.
 VENV = .venv
 PY = $(VENV)/bin/python
+# Host port of the compose mosquitto (the AZ3166 board publishes to 1883). Other port: MQTT_HOST_PORT=1884 make guardian
+MQTT_HOST_PORT ?= 1883
+export MQTT_HOST_PORT
 
-.PHONY: help up down logs kuksa sim sim-up guardian adapter hw dfm-faults dfm-fixtures images venv sim-local test-local shell test
+.PHONY: mqtt-port help up down logs kuksa sim sim-up guardian adapter hw dfm-faults dfm-fixtures images venv sim-local test-local shell test
+
+mqtt-port: # stop early when another broker (e.g. a host mosquitto service) already holds the port
+	@[ -n "$$($(DC) ps -q mosquitto 2>/dev/null)" ] \
+	  || ! python3 -c 'import socket, sys; sys.exit(socket.socket().connect_ex(("127.0.0.1", $(MQTT_HOST_PORT))) != 0)' \
+	  || { echo "Port $(MQTT_HOST_PORT) is taken (host mosquitto? sudo systemctl stop mosquitto) - or: MQTT_HOST_PORT=1884 make $(MAKECMDGOALS)"; exit 1; }
 
 help:   ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
 
-up:     ## start databroker + mosquitto in the background
+up: mqtt-port ## start databroker + mosquitto in the background
 	$(DC) up -d databroker mosquitto
 
 down:   ## stop everything
@@ -30,14 +38,14 @@ sim:    ## sine-wave temperature simulator into KUKSA (foreground; SIM_PERIOD_S=
 sim-up: ## databroker + simulator in the background; then `make kuksa` in another terminal
 	$(DC) --profile tools up -d databroker simulator
 
-guardian: ## databroker + simulator + vss-uprotocol-client + guardian + dfm, follows guardian logs (Ctrl+C stops following)
+guardian: mqtt-port ## databroker + simulator + vss-uprotocol-client + guardian + dfm, follows guardian logs (Ctrl+C stops following)
 	$(DC) --profile tools up -d --build databroker mosquitto simulator vss-uprotocol-client guardian dfm
 	$(DC) --profile tools logs -f guardian
 
-adapter: ## MQTT -> KUKSA adapter in the foreground (starts databroker + mosquitto; stop the simulator first)
+adapter: mqtt-port ## MQTT -> KUKSA adapter in the foreground (starts databroker + mosquitto; stop the simulator first)
 	$(DC) --profile tools run --rm adapter
 
-hw:     ## hardware run: AZ3166 -> mosquitto -> adapter -> databroker -> vss-uprotocol-client -> guardian + dfm (no simulator)
+hw: mqtt-port ## hardware run: AZ3166 -> mosquitto -> adapter -> databroker -> vss-uprotocol-client -> guardian + dfm (no simulator)
 	$(DC) --profile tools stop simulator
 	$(DC) --profile tools up -d --build databroker mosquitto adapter vss-uprotocol-client guardian dfm
 	$(DC) --profile tools logs -f adapter guardian

@@ -7,7 +7,7 @@ The guardian reports `Failed` / `Passed` for every fault it detects; the DFM kee
 (ISO 14229 lifecycle) and serves them on the iceoryx2 `dfm/query` service, which the OpenSOVD gateway reads.
 
 ```
-guardian --MQTT rom/guardian/fault--> rom-dfm report --fault-lib Reporter (iceoryx2)--> dfm_bin --dfm/query--> OpenSOVD
+guardian --uProtocol up://rom-vehicle/1002/1/8001--> rom-dfm report --fault-lib Reporter (iceoryx2)--> dfm_bin --dfm/query--> OpenSOVD
 ```
 
 ## Output contract (what OpenSOVD reads)
@@ -47,26 +47,32 @@ Regenerate with `make dfm-fixtures`; a guardian test fails if the events drift f
 ```bash
 make guardian       # whole stack incl. mosquitto + dfm
 make dfm-faults     # fault records in the running DFM (JSON)
-mosquitto_sub -t rom/guardian/fault -v   # raw guardian fault events
+make logs           # guardian "fault" events and dfm "fault_record" lines side by side
 ```
 
 The `dfm` container runs `dfm_bin` (catalog dir `/etc/rom/catalog`, storage `/var/lib/rom-dfm`) and
 `rom-dfm report` (Rust, [`src/main.rs`](src/main.rs)). Both are built inside the fault-lib workspace at the
-pinned revision, so the IPC types match. Records are lost when the container is recreated (no storage volume yet).
+pinned revision, so the IPC types match. Fault events arrive over uProtocol (Rust `up-transport-zenoh` 0.9.1,
+Zenoh peer connected to `vss-uprotocol-client`), records are kept in the `dfm-storage` volume. If `dfm_bin` or
+the bridge exits, the container exits too (compose restarts it).
+
+Known limits: fault events are not buffered (the guardian starts after the dfm for that reason); the bridge waits
+50 ms after each record because the DFM's iceoryx2 subscriber buffer is small and a burst would lose records.
 
 | Command (inside the container) | What |
 |---|---|
-| `rom-dfm report` | MQTT `rom/guardian/fault` → fault-lib `Reporter` → DFM (default) |
+| `rom-dfm report` | uProtocol `up://<UP_AUTHORITY>/1002/1/8001` → fault-lib `Reporter` → DFM (default) |
 | `rom-dfm replay <events.jsonl>` | same events from a file, e.g. `/etc/rom/fixtures/guardian_events.jsonl` |
 | `rom-dfm query [--stable]` | all records of `battery_guardian` as JSON |
 
 | Env | Default |
 |---|---|
-| `MQTT_HOST` / `MQTT_PORT` | `localhost` / `1883` |
+| `UP_AUTHORITY` | `rom-vehicle` |
+| `ZENOH_MODE` / `ZENOH_CONNECT` / `ZENOH_LISTEN` | `peer` / – / – (same as `libs/rom-uprotocol`) |
 | `CATALOG` | `/etc/rom/catalog/battery_guardian.json` |
 | `DFM_PATH` (query) | `battery_guardian` |
 
-Guardian event (`libs/rom-common` `build_fault_event`, QoS 1):
+Guardian event (`libs/rom-common` `build_fault_event`, uProtocol JSON payload):
 `{"fault":"BatteryTempSignalStale","stage":"Failed","ts_ms":…,"temp_c":30.0,"reason":"stale signal","seq":18,"msg_id":"…"}`
 
 ## Testing the OpenSOVD side without the RoM stack

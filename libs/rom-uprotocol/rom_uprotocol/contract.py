@@ -15,6 +15,7 @@ UP_VSS_PUBLISHER_UE_VERSION = 1
 UP_RESOURCE_BATTERY_TEMP = 0x8001        # topic: battery temperature (publish range 0x8000-0xFFFE)
 UP_GUARDIAN_UE_ID = 0x1002               # uEntity "Battery Thermal Guardian"
 UP_GUARDIAN_UE_VERSION = 1
+UP_RESOURCE_GUARDIAN_FAULT = 0x8001      # topic: guardian fault events (Failed/Passed) -> DFM
 
 
 def build_signal_msg(vss_path: str, value: float, seq: int, ts_ms: int, source_ts_ms: int) -> bytes:

@@ -27,3 +27,10 @@ def battery_temp_topic(authority: Optional[str] = None) -> UUri:
 def guardian_uri(authority: Optional[str] = None) -> UUri:
     return UUri(authority_name=_authority(authority), ue_id=contract.UP_GUARDIAN_UE_ID,
                 ue_version_major=contract.UP_GUARDIAN_UE_VERSION)
+
+
+def guardian_fault_topic(authority: Optional[str] = None) -> UUri:
+    """Topic the DFM subscribes to: up://<authority>/1002/1/8001 (rom_common.contracts.build_fault_event)."""
+    return UUri(authority_name=_authority(authority), ue_id=contract.UP_GUARDIAN_UE_ID,
+                ue_version_major=contract.UP_GUARDIAN_UE_VERSION,
+                resource_id=contract.UP_RESOURCE_GUARDIAN_FAULT)

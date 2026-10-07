@@ -1,11 +1,13 @@
 // Made with Claude (Claude Code, Anthropic)
 //! RoM DFM bridge: guardian fault events -> fault-lib Reporter -> dfm_bin, and a query CLI.
 //!
-//!   rom-dfm report               MQTT rom/guardian/fault -> DFM (default)
+//!   rom-dfm report               uProtocol up://<UP_AUTHORITY>/1002/1/8001 -> DFM (default)
 //!   rom-dfm replay <events.jsonl> same events from a file (fixtures, OpenSOVD integration tests)
 //!   rom-dfm query [--stable]     DFM fault records as JSON (--stable: without timestamps)
 
-use std::{collections::HashMap, env, fs, thread, time::Duration};
+use std::{collections::HashMap, env, fs, str::FromStr, sync::{Arc, mpsc}, thread, time::Duration};
+
+use async_trait::async_trait;
 
 use common::{
     fault::{LifecyclePhase, LifecycleStage},
@@ -19,10 +21,12 @@ use fault_lib::{
     catalog::FaultCatalogBuilder,
     reporter::{Reporter, ReporterApi, ReporterConfig},
 };
-use rumqttc::{Client, Event, MqttOptions, Packet, QoS};
 use serde_json::{Value, json};
+use up_rust::{UListener, UMessage, UTransport, UUri};
+use up_transport_zenoh::{UPTransportZenoh, zenoh_config};
 
-const TOPIC: &str = "rom/guardian/fault";
+/// Guardian fault topic (libs/rom-uprotocol: UP_GUARDIAN_UE_ID 0x1002, UP_RESOURCE_GUARDIAN_FAULT 0x8001)
+const FAULT_TOPIC: &str = "1002/1/8001";
 const ENV_KEYS: [&str; 5] = ["temp_c", "reason", "seq", "msg_id", "ts_ms"];
 
 fn log(event: &str, fields: Value) {
@@ -127,25 +131,52 @@ fn env_json(env: &[(&str, String)]) -> Value {
     env.iter().map(|(k, v)| ((*k).to_string(), Value::String(v.clone()))).collect::<serde_json::Map<_, _>>().into()
 }
 
-fn report(mut bridge: Bridge) {
-    let port = var("MQTT_PORT", "1883").parse().expect("MQTT_PORT");
-    let mut opts = MqttOptions::new(format!("rom-dfm-{}", std::process::id()), var("MQTT_HOST", "localhost"), port);
-    opts.set_keep_alive(Duration::from_secs(30));
-    let (client, mut connection) = Client::new(opts, 64);
-    for event in connection.iter() {
-        match event {
-            // clean session: subscribe again after every (re)connect
-            Ok(Event::Incoming(Packet::ConnAck(_))) => {
-                let _ = client.try_subscribe(TOPIC, QoS::AtLeastOnce);
-                log("subscribed", json!({"topic": TOPIC}));
-            }
-            Ok(Event::Incoming(Packet::Publish(p))) => bridge.handle(&p.payload),
-            Ok(_) => {}
-            Err(e) => {
-                log("mqtt_error", json!({"error": e.to_string()}));
-                thread::sleep(Duration::from_secs(1));
-            }
+/// Hands every payload to the thread that owns the Bridge (fault-lib is sync, Zenoh calls back on its own threads).
+struct Forward(mpsc::Sender<Vec<u8>>);
+
+#[async_trait]
+impl UListener for Forward {
+    async fn on_receive(&self, msg: UMessage) {
+        if let Some(payload) = msg.payload {
+            let _ = self.0.send(payload.to_vec());
         }
+    }
+}
+
+/// Zenoh session from the same env as libs/rom-uprotocol: ZENOH_MODE, ZENOH_CONNECT, ZENOH_LISTEN (comma lists).
+fn zenoh_cfg() -> zenoh_config::Config {
+    let mut cfg = zenoh_config::Config::default();
+    let list = |name: &str| -> Vec<String> {
+        var(name, "").split(',').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect()
+    };
+    cfg.insert_json5("mode", &json!(var("ZENOH_MODE", "peer")).to_string()).expect("ZENOH_MODE");
+    for (key, name) in [("connect/endpoints", "ZENOH_CONNECT"), ("listen/endpoints", "ZENOH_LISTEN")] {
+        let endpoints = list(name);
+        if !endpoints.is_empty() {
+            cfg.insert_json5(key, &json!(endpoints).to_string()).expect(name);
+        }
+    }
+    cfg
+}
+
+fn report(mut bridge: Bridge) {
+    let authority = var("UP_AUTHORITY", "rom-vehicle");
+    let topic = UUri::from_str(&format!("//{authority}/{FAULT_TOPIC}")).expect("fault topic");
+    let (tx, rx) = mpsc::channel();
+    let rt = tokio::runtime::Runtime::new().expect("tokio");
+    let _transport = rt.block_on(async {
+        let transport = UPTransportZenoh::builder(authority.as_str())
+            .expect("UP_AUTHORITY")
+            .with_config(zenoh_cfg())
+            .build()
+            .await
+            .expect("zenoh session");
+        transport.register_listener(&topic, None, Arc::new(Forward(tx))).await.expect("register listener");
+        transport
+    });
+    log("subscribed", json!({"topic": topic.to_uri(true)}));
+    for payload in rx {
+        bridge.handle(&payload);
     }
 }
 

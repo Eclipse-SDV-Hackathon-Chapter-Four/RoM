@@ -87,7 +87,7 @@
                 "Text": "battery_guardian.out_of_range"
             },
             "name": "BatteryTempOutOfRange",
-            "summary": "Battery temperature outside -40..100 degC",
+            "summary": "Battery temperature outside MIN/MAX_PLAUSIBLE_C (default -40..150 degC)",
             "category": "Hardware",
             "severity": "Error",
             "compliance": [

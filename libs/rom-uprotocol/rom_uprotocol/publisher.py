@@ -32,6 +32,13 @@ Send = Callable[[UMessage], UStatus]
 Interceptor = Callable[[UMessage, Send], UStatus]
 
 
+def json_message(topic: UUri, payload: "bytes | str") -> UMessage:
+    """Publish message with a JSON payload (e.g. guardian fault events)."""
+    data = payload.encode() if isinstance(payload, str) else payload
+    return UMessageBuilder.publish(topic).build_from_upayload(
+        UPayload.pack_from_data_and_format(data, UPayloadFormat.UPAYLOAD_FORMAT_JSON))
+
+
 def _chain(send: Send, interceptors: Sequence[Interceptor]) -> Send:
     forward = send
     for interceptor in reversed(interceptors):

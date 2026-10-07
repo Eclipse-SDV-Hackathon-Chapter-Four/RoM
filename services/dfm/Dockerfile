@@ -1,5 +1,5 @@
 # Made with Claude (Claude Code, Anthropic)
-# Diagnostic Fault Manager: fault-lib dfm_bin + rom-dfm bridge (guardian MQTT events -> fault-lib Reporter).
+# Diagnostic Fault Manager: fault-lib dfm_bin + rom-dfm bridge (guardian uProtocol fault events -> fault-lib Reporter).
 # Self-contained: no bind mounts, configured only via env, logs to stdout.
 # Build from the repo root:  docker build -f services/dfm/Dockerfile -t localhost/rom/dfm:dev .
 FROM docker.io/library/rust:1-bookworm AS build
@@ -19,10 +19,11 @@ FROM docker.io/library/debian:bookworm-slim
 COPY --from=build /fault-lib/target/release/dfm_bin /fault-lib/target/release/rom-dfm /usr/local/bin/
 COPY services/dfm/catalog /etc/rom/catalog
 COPY services/dfm/fixtures /etc/rom/fixtures
-ENV CATALOG=/etc/rom/catalog/battery_guardian.json MQTT_HOST=localhost MQTT_PORT=1883
+ENV CATALOG=/etc/rom/catalog/battery_guardian.json
 # /tmp/iceoryx2 exists up front so a shared named volume on it is owned by rom (OpenSOVD gateway joins via ipc)
 RUN useradd --system --no-create-home rom && mkdir -p /var/lib/rom-dfm /tmp/iceoryx2 \
  && chown rom /var/lib/rom-dfm /tmp/iceoryx2
 USER rom
-# ponytail: two processes in one container (iceoryx2 shared memory); split with ipc: shareable if Ankaios needs it
-CMD ["sh", "-c", "dfm_bin --catalog-dir /etc/rom/catalog --storage-dir /var/lib/rom-dfm & exec rom-dfm report"]
+# Two processes in one container (iceoryx2 shared memory): if either exits (or on SIGTERM), stop both and exit 1,
+# so the orchestrator (compose restart policy / Ankaios) sees it. dfm_bin ignores SIGTERM (iceoryx2 handler) -> -9.
+CMD ["bash", "-c", "dfm_bin --catalog-dir /etc/rom/catalog --storage-dir /var/lib/rom-dfm & a=$!; rom-dfm report & b=$!; trap 'kill $a $b' TERM INT; wait -n; kill $a $b 2>/dev/null; sleep 1; kill -9 $a $b 2>/dev/null; exit 1"]
