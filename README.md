@@ -42,12 +42,21 @@ The compose mosquitto needs host port 1883 (the AZ3166 board publishes there). I
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every PR: `make test`, the DFM build with
 `cargo test` and a fixture check against a real `dfm_bin`, all service images, and the AZ3166 ThreadX firmware.
 
-## Dashboard (gui branch)
+## Dashboard and demo
 
-`make guardian` in one terminal, `make dashboard` in another, then <http://localhost:5173/#/live> (Live Monitoring with a
-**Run Scenario** control that starts a real fault campaign) and <http://localhost:5173/#/evidence> (Safety Evidence: the
-Evidence Collector's report of a saved run, `make evidence-snapshot`). No Node.js needed, only Docker. Setup, the list of
-scenarios, evidence snapshots and troubleshooting: [`services/dashboard/README.md`](services/dashboard/README.md).
+The dashboard shows the running stack live (**Live Monitoring**), starts and stops the real fault campaigns from a dropdown
+(**Run Scenario / Stop**, 20 bundled campaigns, nothing is simulated in the browser) and shows the Evidence Collector's report
+of a saved run (**Safety Evidence**). Only Docker is needed, no Node.js:
+
+```bash
+make images && make guardian     # terminal 1: the stack (stays attached to the guardian log)
+make dashboard                   # terminal 2: http://localhost:5173/#/live  and  /#/evidence
+make evidence-snapshot           # after some scenarios: saves runs/<timestamp>/ (gitignored) for Safety Evidence
+make dashboard-stop && make down # stop
+```
+
+The full runbook (architecture, file map, every command, the 20 scenarios, verdicts, demo script, hardware vs simulator-only,
+troubleshooting, emergency checklist): [`services/dashboard/README.md`](services/dashboard/README.md).
 
 ## All commands
 

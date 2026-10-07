@@ -9,13 +9,13 @@
 #  * same absolute path   the repository is mounted at the SAME path as on the host (not /repo), and ROM_RUNTIME_REPO is
 #                         that path. That is what makes the volumes in infra/docker-compose.yml valid.
 #  * --user + group       files created in the clone (node_modules) belong to you, not root; the socket's group is added.
-# Overrides: ROM_RUNTIME_REPO=<checkout with the running stack> (default: this clone), DASHBOARD_PORT=5173 (do not change
-# unless you also change VITE port: the dev server is started with --strictPort).
+# Overrides: ROM_RUNTIME_REPO=<checkout with the running stack> (default: this clone), DASHBOARD_PORT=5173 and
+# DASHBOARD_CONTAINER=rom-dashboard-dev (e.g. to run a second dashboard next to the first one).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 RUNTIME="$(cd "${ROM_RUNTIME_REPO:-$ROOT}" && pwd -P)"
-NAME=rom-dashboard-dev
+NAME="${DASHBOARD_CONTAINER:-rom-dashboard-dev}"
 IMAGE=rom/dashboard-dev:local
 SOCK=/var/run/docker.sock
 PORT="${DASHBOARD_PORT:-5173}"

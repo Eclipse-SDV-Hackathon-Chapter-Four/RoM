@@ -49,9 +49,15 @@ test("the command is the Makefile's single-campaign command plus a name and a la
   });
 });
 
-test("lists the 15 bundled campaigns, and drops ones whose YAML is missing in the runtime repo", () => {
+test("lists the bundled campaigns present in the runtime repo, drops missing ones, adds new ones, ignores unsafe file names", () => {
   const dir = repo();
-  assert.equal(listScenarios(dir).length, 15);
+  const camp = path.join(dir, "services/fault-injector/fault_injector/campaigns");
+  assert.equal(listScenarios(dir).length, Object.keys(SCENARIOS).length);
+  fs.writeFileSync(path.join(camp, "brand_new_case.yaml"), "x: 1\n");
+  for (const bad of ["Bad Name.yaml", "x;rm.yaml", "UPPER.yaml", "1abc.yaml", ".hidden.yaml"]) fs.writeFileSync(path.join(camp, bad), "x: 1\n");
+  const l = listScenarios(dir);
+  assert.deepEqual(l.at(-1), { id: "brand_new_case", label: "Brand New Case" });
+  assert.equal(l.length, Object.keys(SCENARIOS).length + 1, "unsafe names are never offered");
   fs.rmSync(path.join(dir, "services/fault-injector/fault_injector/campaigns/transport_drop.yaml"));
   assert.ok(!listScenarios(dir).some((s) => s.id === "transport_drop"));
 });
@@ -146,7 +152,7 @@ test("HTTP routes: list, status, run (400 / 202 / 409), cross-origin refused, wr
   const base = `http://127.0.0.1:${srv.address().port}/api/scenarios`;
   const post = (body, headers = {}) => fetch(`${base}/run`, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body });
   try {
-    assert.equal((await (await fetch(base)).json()).scenarios.length, 15);
+    assert.equal((await (await fetch(base)).json()).scenarios.length, Object.keys(SCENARIOS).length);
     assert.deepEqual(await (await fetch(`${base}/status`)).json(), { status: "idle" });
     assert.equal((await post("not json")).status, 400);
     assert.equal((await post(JSON.stringify({ scenario: "rm -rf /" }))).status, 400);

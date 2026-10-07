@@ -15,15 +15,15 @@
 // period, SIGKILL of that same container. Containers are named rom-dashboard-campaign-<id>-<random> and labelled
 // rom.dashboard.campaign=<id>; the API takes no container argument and every docker call is checked against that name.
 //
-// Security: the browser sends an id, never a command. The id must be a key of SCENARIOS (and its YAML must exist in the
-// runtime repo); the command and its arguments are fixed here and started with spawn() and an argument array, no shell.
+// Security: the browser sends an id, never a command. The id must name a bundled campaign YAML that exists in the
+// runtime repo (see listScenarios); the command and its arguments are fixed here and started with spawn() and an argument array, no shell.
 import { execFile, spawn as nodeSpawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Canonical campaign name (= file name of services/fault-injector/fault_injector/campaigns/<id>.yaml) -> display label. */
+/** Display labels of the known campaigns, by canonical name (= file name of services/fault-injector/fault_injector/campaigns/<id>.yaml). */
 export const SCENARIOS = Object.freeze({
   thermal_runaway: "Thermal Runaway",
   transport_drop: "Transport Drop",
@@ -40,7 +40,14 @@ export const SCENARIOS = Object.freeze({
   producer_heartbeat_loss: "Producer Heartbeat Loss",
   uprotocol_heartbeat_loss: "uProtocol Heartbeat Loss",
   replay_interruption: "Replay Interruption",
+  transport_duplicate: "Transport Duplicate",
+  transport_reorder: "Transport Reorder",
+  sensor_spike_cell2: "Sensor Spike — Cell 2",
+  reorder_during_runaway: "Reorder During Runaway",
+  heartbeat_duplicate_reorder: "Heartbeat Duplicate / Reorder",
 });
+const SAFE_ID = /^[a-z][a-z0-9_]{0,63}$/;
+const humanize = (id) => id.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
 
 const CAMPAIGN_DIR = ["services", "fault-injector", "fault_injector", "campaigns"];
 const COMPOSE_FILE = path.join("infra", "docker-compose.yml");
@@ -65,17 +72,23 @@ export function campaignCommand(id, container) {
 export const defaultRuntimeRepo = () => process.env.ROM_RUNTIME_REPO || fileURLToPath(new URL("../../..", import.meta.url));
 const defaultHealthUrl = () => `${(process.env.EVIDENCE_API_TARGET || "http://localhost:8082").replace(/\/$/, "")}/health`;
 
-/** Allowlisted scenarios whose campaign definition really exists in the runtime repo (or all, if it cannot be read). */
+/**
+ * The scenarios on offer = the bundled campaign definitions that really exist in the runtime repo (<id>.yaml, a plain
+ * [a-z0-9_] name, so nothing else can reach the command line). Known ones come first with their label, a campaign added
+ * later appears with a label made from its name. If the folder cannot be read, only the known ones are offered.
+ */
 export function listScenarios(runtimeRepo) {
-  let present = null;
+  let names = null;
   try {
-    present = new Set(fs.readdirSync(path.join(runtimeRepo, ...CAMPAIGN_DIR)).filter((f) => f.endsWith(".yaml")).map((f) => f.slice(0, -5)));
+    names = fs.readdirSync(path.join(runtimeRepo, ...CAMPAIGN_DIR)).filter((f) => f.endsWith(".yaml")).map((f) => f.slice(0, -5)).filter((id) => SAFE_ID.test(id));
   } catch {
-    present = null;
+    names = null;
   }
-  return Object.entries(SCENARIOS)
-    .filter(([id]) => !present || present.has(id))
-    .map(([id, label]) => ({ id, label }));
+  if (!names) return Object.entries(SCENARIOS).map(([id, label]) => ({ id, label }));
+  const have = new Set(names);
+  const known = Object.keys(SCENARIOS).filter((id) => have.has(id));
+  const extra = names.filter((id) => !Object.hasOwn(SCENARIOS, id)).sort();
+  return [...known, ...extra].map((id) => ({ id, label: SCENARIOS[id] ?? humanize(id) }));
 }
 
 /** Healthy = the collector answers ok and the guardian is back in MONITORING (a campaign during another state is judged INCONCLUSIVE). */
@@ -137,7 +150,7 @@ export function createScenarioRunner({
   };
 
   const run = async (id) => {
-    if (typeof id !== "string" || !Object.hasOwn(SCENARIOS, id) || !listScenarios(runtimeRepo).some((s) => s.id === id)) {
+    if (typeof id !== "string" || !listScenarios(runtimeRepo).some((s) => s.id === id)) {
       return { code: 400, body: { error: "Unknown scenario" } };
     }
     if (state.status === "running" || state.status === "stopping") {
@@ -218,7 +231,7 @@ export function createScenarioRunner({
     if (state.status !== "idle") return;
     const out = await docker(["ps", "--filter", `label=${CAMPAIGN_LABEL}`, "--format", `{{.Names}} {{.Label "${CAMPAIGN_LABEL}"}}`]);
     if (out.code !== 0) return;
-    const found = out.stdout.split("\n").map((l) => l.trim().split(" ")).find(([n, id]) => isCampaignContainer(n) && Object.hasOwn(SCENARIOS, id));
+    const found = out.stdout.split("\n").map((l) => l.trim().split(" ")).find(([n, id]) => isCampaignContainer(n) && listScenarios(runtimeRepo).some((x) => x.id === id));
     if (!found || state.status !== "idle") return;
     const [container, id] = found;
     let markExited;
