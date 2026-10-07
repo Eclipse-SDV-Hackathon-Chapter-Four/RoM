@@ -10,7 +10,7 @@ PY = $(VENV)/bin/python
 MQTT_HOST_PORT ?= 1883
 export MQTT_HOST_PORT
 
-.PHONY: help mqtt-restart up down logs kuksa sim sim-up guardian campaign campaigns adapter hw sovd sovd-faults dfm-faults dfm-fixtures images venv sim-local test-local shell test
+.PHONY: help mqtt-restart up down logs kuksa sim sim-up guardian campaign campaigns campaigns-all evidence evidence-bundle adapter hw sovd sovd-faults dfm-faults dfm-fixtures images venv sim-local test-local shell test
 
 help:   ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -26,10 +26,10 @@ up:     mqtt-restart ## start databroker + mosquitto in the background (mosquitt
 	$(DC) up -d databroker mosquitto
 
 down:   ## stop everything
-	$(DC) --profile tools --profile todo down
+	$(DC) --profile tools down
 
 logs:   ## follow databroker + mosquitto logs
-	$(DC) --profile tools logs -f databroker mosquitto simulator adapter vss-uprotocol-client guardian dfm opensovd
+	$(DC) --profile tools logs -f databroker mosquitto simulator adapter vss-uprotocol-client guardian dfm opensovd evidence-collector
 
 kuksa:  ## interactive kuksa-client shell in the foreground (starts databroker if needed)
 	$(DC) run --rm kuksa-client
@@ -40,15 +40,15 @@ sim:    ## sine-wave temperature simulator into KUKSA (foreground; SIM_PERIOD_S=
 sim-up: ## databroker + simulator in the background; then `make kuksa` in another terminal
 	$(DC) --profile tools up -d databroker simulator
 
-guardian: mqtt-restart ## databroker + simulator + vss-uprotocol-client + guardian + dfm + opensovd, follows guardian logs (Ctrl+C stops following)
-	$(DC) --profile tools up -d --build databroker simulator vss-uprotocol-client guardian dfm opensovd
+guardian: mqtt-restart ## databroker + simulator + vss-uprotocol-client + guardian + dfm + opensovd + evidence-collector, follows guardian logs (Ctrl+C stops following)
+	$(DC) --profile tools up -d --build databroker simulator vss-uprotocol-client guardian dfm opensovd evidence-collector
 	$(DC) --profile tools logs -f guardian
 
 adapter: mqtt-restart ## MQTT -> KUKSA adapter in the foreground (starts databroker + mosquitto; stop the simulator first)
 	$(DC) --profile tools run --rm adapter
 
 hw:     mqtt-restart ## hardware run: AZ3166 = cell 1 -> mosquitto -> adapter -> databroker -> vss-uprotocol-client -> guardian + dfm + opensovd; simulator fills cells 2-4; guardian expects the chip + adapter heartbeats
-	SIM_CELLS=2,3,4 REQUIRED_HEARTBEATS=uprotocol,databroker,adapter,chip $(DC) --profile tools up -d --build databroker mosquitto adapter simulator vss-uprotocol-client guardian dfm opensovd
+	SIM_CELLS=2,3,4 REQUIRED_HEARTBEATS=uprotocol,databroker,adapter,chip $(DC) --profile tools up -d --build databroker mosquitto adapter simulator vss-uprotocol-client guardian dfm opensovd evidence-collector
 	$(DC) --profile tools logs -f adapter guardian
 
 campaigns: ## list the bundled fault campaigns
@@ -57,6 +57,19 @@ campaigns: ## list the bundled fault campaigns
 campaign: ## run a fault campaign against the running stack: make campaign C=thermal_runaway (after `make guardian`)
 	@test -n "$(C)" || { echo "usage: make campaign C=<name>   (make campaigns lists them)"; exit 2; }
 	$(DC) --profile tools run --rm fault-injector rom-fault-injector run $(C)
+
+campaigns-all: ## run every bundled campaign one after another (the evidence collector judges each); ~15 min
+	@for c in $$($(DC) --profile tools run --rm -T fault-injector rom-fault-injector list); do \
+	  echo "== $$c"; $(DC) --profile tools run --rm -T fault-injector rom-fault-injector run $$c >/dev/null || echo "   $$c did not complete"; \
+	  sleep 8; done   # let the guardian settle back to MONITORING (stale / stuck timers, heartbeats) before the next one
+	@$(MAKE) --no-print-directory evidence
+
+evidence: ## verdicts of the evidence collector (http://localhost:8082/ui/ for the report)
+	@curl -sf http://localhost:8082/evidence/summary | python3 -m json.tool
+	@curl -sf 'http://localhost:8082/evidence?limit=20' | python3 -c 'import json,sys; [print(r["verdict"].ljust(13), r["record_id"], "; ".join(x["text"] for x in r["reasons"])) for r in json.load(sys.stdin)]'
+
+evidence-bundle: ## download the evidence bundle (ZIP with SHA-256 manifest): make evidence-bundle [RUN=thermal-runaway-01]
+	curl -sfOJ 'http://localhost:8082/evidence/bundle.zip$(if $(RUN),?run_id=$(RUN))'
 
 sovd:   ## DFM + Eclipse OpenSOVD server in the background (SOVD REST on http://localhost:7690/sovd)
 	$(DC) --profile tools up -d --build dfm opensovd
@@ -74,7 +87,7 @@ dfm-fixtures: ## regenerate services/dfm/fixtures: guardian test scenario -> eve
 	  rom-dfm replay /etc/rom/fixtures/guardian_events.jsonl >/dev/null && rom-dfm query --stable' > services/dfm/fixtures/battery_guardian_faults.json
 
 images: ## build the service images localhost/rom/<service>:dev (ready for podman / Ankaios)
-	$(DC) --profile tools --profile todo build vss-uprotocol-client guardian fault-injector dfm opensovd evidence-collector
+	$(DC) --profile tools build vss-uprotocol-client guardian fault-injector dfm opensovd evidence-collector
 
 venv:   ## create .venv with every RoM package installed editable (reruns when requirements.txt changes)
 $(VENV)/.installed: requirements.txt

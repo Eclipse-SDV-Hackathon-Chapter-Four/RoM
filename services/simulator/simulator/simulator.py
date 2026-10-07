@@ -14,8 +14,11 @@ Vehicle.RoM.Heartbeat.Simulator (always) and Vehicle.RoM.Heartbeat.Chip (a simul
 Faults are injected over HTTP while it runs (SIM_API_PORT, see api.py and README.md): the signal of a cell can be
 stuck, spiked, drifted or out of range, and the source can drop cells or stall (replay interruption).
 
-Env defaults: SIM_HZ, SIM_PERIOD_S, SIM_MIN_C, SIM_MAX_C, SIM_DURATION_S, SIM_SEED, SIM_CELLS, SIM_API_HOST, SIM_API_PORT
-(plus KUKSA_HOST/KUKSA_PORT).
+With SIM_COOLING=1 it is also the cooling actuator: while the guardian is MITIGATING (its state over uProtocol) the
+simulated cells cool down, see cooling.py.
+
+Env defaults: SIM_HZ, SIM_PERIOD_S, SIM_MIN_C, SIM_MAX_C, SIM_DURATION_S, SIM_SEED, SIM_CELLS, SIM_API_HOST, SIM_API_PORT,
+SIM_COOLING, SIM_COOLING_C_PER_S, SIM_COOLING_RELAX_C_PER_S (plus KUKSA_HOST/KUKSA_PORT, UP_*/ZENOH_*).
 """
 import argparse
 import os
@@ -29,6 +32,7 @@ from rom_common.contracts import (COMPONENT_CHIP, COMPONENT_SIMULATOR, VSS_BATTE
                                   VSS_HEARTBEAT_CHIP, VSS_HEARTBEAT_SIMULATOR)
 
 from .api import build_api
+from .cooling import Cooling
 from .faults import FaultState
 from .wave import cell_offsets, cell_temps
 
@@ -74,12 +78,13 @@ def run(sink: Callable[[Dict[str, float]], None], log, hz: float = 2.0, period_s
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
         faults: Optional[FaultState] = None, session: Optional[Session] = None,
-        cells: Sequence[int] = ALL_CELLS) -> int:
+        cells: Sequence[int] = ALL_CELLS, cooling: Optional[Cooling] = None) -> int:
     """Send samples at `hz` until duration_s elapses (0 = forever). Returns the tick count.
 
     sink gets {vss_path: value} for the simulated cells that are reported, for Max (only if all four cells are
     simulated) and for the heartbeats. Without data (everything dropped out, or the source is stalled) only the
     heartbeats go out: the process is alive, the data is not. Ticks keep their schedule during faults.
+    cooling (optional) lowers every simulated cell before the faults are applied.
     """
     cells = tuple(sorted(set(cells)))
     faults = faults if faults is not None else FaultState(monotonic)
@@ -97,12 +102,16 @@ def run(sink: Callable[[Dict[str, float]], None], log, hz: float = 2.0, period_s
                 wave_t, offsets = 0.0, cell_offsets(session.seed, len(VSS_CELL_TEMPS))
                 period_s, min_c, max_c = (new_run.get(k, v) for k, v in (("period_s", period_s), ("min_c", min_c),
                                                                        ("max_c", max_c)))
+                if cooling is not None:
+                    cooling.reset()
             for f in faults.expire():
                 log.log("fault_cleared", reason="expired", **f.as_dict())
             stalled = faults.source_stalled()
+            cooled = cooling.step() if cooling is not None else 0.0
             reported: Dict[int, float] = {}
             if not stalled:
-                wave = dict(zip(ALL_CELLS, cell_temps(wave_t, offsets, period_s, min_c, max_c)))
+                wave = {c: round(t + cooled, 2)
+                        for c, t in zip(ALL_CELLS, cell_temps(wave_t, offsets, period_s, min_c, max_c))}
                 reported = {c: v for c, v in faults.apply({c: wave[c] for c in cells}).items() if v is not None}
                 wave_t += 1 / hz
             hottest = max(reported.values()) if reported else None
@@ -120,9 +129,9 @@ def run(sink: Callable[[Dict[str, float]], None], log, hz: float = 2.0, period_s
             if values:
                 sink(values)
             session.publish(source_time_s=round(wave_t, 3), stalled=stalled, cells=reported, max_c=hottest,
-                            heartbeats=beats, faults=[f.as_dict() for f in faults.active()])
+                            heartbeats=beats, faults=[f.as_dict() for f in faults.active()], cooling_c=cooled)
             log.log("sample", seq=i, temp_c=hottest, cells=reported, stalled=stalled, heartbeats=beats,
-                    sent_ts_ms=clock.now_ms())
+                    cooling_c=cooled, sent_ts_ms=clock.now_ms())
             i += 1
             sleep(max(0.0, start + i / hz - monotonic()))  # fixed schedule, no drift
     except KeyboardInterrupt:
@@ -147,6 +156,9 @@ def main(argv: Optional[list] = None) -> None:
                    help="cells to simulate, e.g. 2,3,4 when a real board is cell 1")
     p.add_argument("--api-host", default=os.environ.get("SIM_API_HOST", "127.0.0.1"))
     p.add_argument("--api-port", type=int, default=int(_env("SIM_API_PORT", 8080)), help="0 = no HTTP API")
+    p.add_argument("--cooling", action="store_true",
+                   default=os.environ.get("SIM_COOLING", "").lower() in ("1", "true", "yes"),
+                   help="cool the cells while the guardian is MITIGATING (guardian state over uProtocol)")
     a = p.parse_args(argv)
     if a.hz <= 0 or a.period <= 0 or a.min_c >= a.max_c:
         p.error("need hz > 0, period > 0 and min < max")
@@ -166,12 +178,19 @@ def main(argv: Optional[list] = None) -> None:
             log.log("api_started", host=a.api_host, port=api.port)
         except OSError as e:  # e.g. port taken: the simulator is still useful without fault injection
             log.log("api_unavailable", host=a.api_host, port=a.api_port, error=str(e))
+    cooling, transport = None, None
+    if a.cooling:
+        from .cooling import subscribe  # needs rom-uprotocol
+        cooling = Cooling(_env("SIM_COOLING_C_PER_S", 3.0), _env("SIM_COOLING_RELAX_C_PER_S", 0.2))
+        transport = subscribe(cooling, log)
     client = kuksa.open_client()
     try:
         run(lambda values: kuksa.set_values(client, values), log, a.hz, a.period, a.min_c, a.max_c, a.duration,
-            faults=faults, session=session, cells=cells)
+            faults=faults, session=session, cells=cells, cooling=cooling)
     finally:
         client.disconnect()
+        if transport is not None:
+            transport.close_sync()
         if api is not None:
             api.close()
 

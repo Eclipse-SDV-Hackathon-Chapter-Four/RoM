@@ -8,8 +8,10 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_
 
 WORKDIR /src
 COPY libs/rom-common libs/rom-common
+COPY libs/rom-uprotocol libs/rom-uprotocol
 COPY services/fault-injector services/fault-injector
-RUN pip install ./libs/rom-common ./services/fault-injector \
+RUN pip install ./libs/rom-common ./libs/rom-uprotocol ./services/fault-injector \
+ && pip install --no-deps up-python==0.2.0.dev0 \
  && rm -rf /src
 
 RUN useradd --system --no-create-home rom

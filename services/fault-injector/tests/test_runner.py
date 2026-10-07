@@ -161,3 +161,20 @@ def test_cli_errors_exit_2(capsys):
     assert main(["run", "transport_drop"]) == 2      # needs a publisher URL
     err = capsys.readouterr().err
     assert "no campaign file" in err and "publisher" in err
+
+
+def test_campaign_log_publishes_campaign_events_only_with_the_run_id():
+    pytest.importorskip("uprotocol")
+    from fault_injector.bus import CampaignLog
+
+    fake, out, published = Fake(), io.StringIO(), []
+    log = CampaignLog(JsonLogger("fault-injector", None, out), published.append)
+    status = Runner(make(TWO), URLS, log, fake.http, fake.sleep, lambda: fake.t).run()
+    logged = [json.loads(l)["event"] for l in out.getvalue().splitlines()]
+    assert status == "completed" and [e.event for e in published] == logged
+    assert {e.run_id for e in published} == {"r1"} and [e.seq for e in published] == list(range(1, len(logged) + 1))
+    start, end = published[0], published[-1]
+    assert start.data["expected_state"] == "CRITICAL" and start.data["max_detect_ms"] == 5000
+    assert end.event == "campaign_end" and end.data == {"status": "completed"}
+    log.log("plan_step", at_s=1)   # not a campaign event: logged, not published
+    assert len(published) == len(logged)

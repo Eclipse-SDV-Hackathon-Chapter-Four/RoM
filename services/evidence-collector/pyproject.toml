@@ -6,12 +6,19 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rom-evidence-collector"
 version = "0.1.0"
-description = "RoM Evidence Collector (placeholder)"
+description = "RoM Evidence Collector: uProtocol recorder, campaign correlator, OpenSOVD check, verdicts and evidence bundles"
 requires-python = ">=3.10"
-dependencies = ["rom-common"]
+# plus up-python==0.2.0.dev0 with --no-deps, like every rom-uprotocol user (see libs/rom-uprotocol/pyproject.toml)
+dependencies = ["rom-common", "rom-uprotocol", "pyyaml>=6", "fastapi>=0.110", "uvicorn>=0.29"]
+
+[project.optional-dependencies]
+test = ["httpx"]   # fastapi.testclient
 
 [project.scripts]
 rom-evidence-collector = "evidence_collector.__main__:main"
 
 [tool.setuptools]
 packages = ["evidence_collector"]
+
+[tool.setuptools.package-data]
+evidence_collector = ["safety_case.yaml"]
