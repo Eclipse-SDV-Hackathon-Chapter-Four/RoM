@@ -1,0 +1,102 @@
+{
+    "id": "battery_guardian",
+    "version": 1,
+    "faults": [
+        {
+            "id": {
+                "Text": "battery_guardian.over_temp_warning"
+            },
+            "name": "BatteryOverTempWarning",
+            "summary": "Battery temperature at or above WARN_C (guardian WARNING)",
+            "category": "Hardware",
+            "severity": "Warn",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.over_temp_critical"
+            },
+            "name": "BatteryOverTempCritical",
+            "summary": "Battery temperature at or above CRIT_C (guardian CRITICAL / MITIGATING)",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.mitigation_failed"
+            },
+            "name": "BatteryMitigationFailed",
+            "summary": "Still above WARN_C 5 s after cooling was requested",
+            "category": "Hardware",
+            "severity": "Fatal",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.signal_stale"
+            },
+            "name": "BatteryTempSignalStale",
+            "summary": "No battery temperature sample for 2 s",
+            "category": "Communication",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.signal_stuck"
+            },
+            "name": "BatteryTempSignalStuck",
+            "summary": "Battery temperature unchanged for 10 s",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        },
+        {
+            "id": {
+                "Text": "battery_guardian.out_of_range"
+            },
+            "name": "BatteryTempOutOfRange",
+            "summary": "Battery temperature outside -40..100 degC",
+            "category": "Hardware",
+            "severity": "Error",
+            "compliance": [
+                "SafetyCritical"
+            ],
+            "reporter_side_debounce": null,
+            "reporter_side_reset": null,
+            "manager_side_debounce": null,
+            "manager_side_reset": null
+        }
+    ]
+}

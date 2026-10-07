@@ -1,0 +1,30 @@
+[
+  {
+    "code": "battery_guardian.over_temp_critical",
+    "fault_name": "BatteryOverTempCritical",
+    "status": {
+      "test_failed": true
+    },
+    "occurrence_counter": 2,
+    "env": {
+      "temp_c": "48.0",
+      "reason": "too hot",
+      "seq": "9",
+      "msg_id": "0199b6c2-0000-7000-8000-000000000009"
+    }
+  },
+  {
+    "code": "battery_guardian.signal_stale",
+    "fault_name": "BatteryTempSignalStale",
+    "status": {
+      "test_failed": false
+    },
+    "occurrence_counter": 1,
+    "env": {
+      "temp_c": "30.0",
+      "reason": "temp ok",
+      "seq": "17",
+      "msg_id": "0199b6c2-0000-7000-8000-000000000011"
+    }
+  }
+]
