@@ -6,7 +6,7 @@ Serves the guardian's DFM fault records over the SOVD REST API (ISO 17978-3). Th
 [OpenSOVD Starter Template](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/OpenSOVD-Starter-Template).
 
 ```
-guardian --MQTT--> rom-dfm report --fault-lib Reporter--> dfm_bin --iceoryx2 dfm/query--> rom-opensovd --HTTP--> SOVD client
+guardian --uProtocol--> rom-dfm report --fault-lib Reporter--> dfm_bin --iceoryx2 dfm/query--> rom-opensovd --HTTP--> SOVD client
                    (services/dfm)                                                          (this service)
 ```
 

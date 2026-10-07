@@ -352,7 +352,7 @@ flowchart LR
 - [x] Eclipse ThreadX firmware on AZ3166 publishing sensor telemetry over MQTT
 - [x] Containerized dev stack, `make` shortcuts, unit tests per component
 - [x] uProtocol extracted into a reusable library (`libs/rom-uprotocol`); every component is its own pip package, services have their own image (ready for Ankaios)
-- [x] Placeholder services with their own images: DFM, OpenSOVD, Evidence Collector (build, start, log `not_implemented`)
+- [x] DFM, OpenSOVD and Evidence Collector as real services with their own images
 - [x] Simulator with 4 battery cells (custom VSS overlay) and runtime fault injection over HTTP
 - [x] Fault Campaign Runner: YAML campaigns with a seed, signal / source / transport faults, `run_id` on every log line
 - [x] Guardian logs the uProtocol `msg_id` / `seq` that caused each state change
@@ -384,7 +384,7 @@ flowchart LR
 
 #### 4. Diagnostics
 - [x] DFM fault records for every faulted scenario (fault-lib `dfm_bin`, catalog `battery_guardian`, see `services/dfm`)
-- [ ] Expose diagnostics through Eclipse OpenSOVD
+- [x] Expose diagnostics through Eclipse OpenSOVD (`GET /sovd/v1/apps/battery_guardian/faults`, SOVD `faults` resource added on top of opensovd-core, see [`services/opensovd`](services/opensovd/README.md))
 - [x] Diagnostic faults: delayed DFM write · partial OpenSOVD visibility (DFM fault API `write_delay` / `drop_write`, campaigns `dfm_write_delay`, `opensovd_partial_visibility` with `expected_verdict: FAIL`)
 
 #### 5. Evidence & verdicts
@@ -394,14 +394,14 @@ flowchart LR
 - [x] Report covering all campaigns, failed scenarios included (`/ui/`, ZIP bundle with SHA-256 manifest)
 
 #### 6. Orchestration & platform
-- [ ] Eclipse Ankaios manages the final orchestrated run
+- [x] Eclipse Ankaios manages the final orchestrated run (`make final-run`, [`infra/ankaios`](infra/ankaios/README.md))
 - [ ] Run the stack on Eclipse AutoSD
 - [ ] Remote reruns (Eclipse openDUT) with verdict consistency check
 
 #### 7. Blueprint & community
 - [ ] Reusable package another team can run with one command
 - [x] CI pipeline on every PR: tests, DFM fixture check, service images, ThreadX firmware
-- [ ] CI runs the fault campaigns
+- [x] CI runs the fault campaigns (`make evidence-ci`: every run must PASS, evidence bundle verified offline)
 - [ ] Upstream contribution: update `up-transport-zenoh-python` to zenoh 1.x and the current up-spec
 - [ ] SDV Blueprint proposal
 
