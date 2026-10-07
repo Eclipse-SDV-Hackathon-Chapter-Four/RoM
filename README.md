@@ -362,7 +362,7 @@ flowchart LR
 
 #### 1. Sources
 - [x] Bring the ThreadX firmware into `main` and align it with the sensor contract — real hardware end-to-end
-- [ ] KUKSA CAN Provider with `.asc` replay as an additional source
+- [ ] KUKSA CAN Provider with `.asc` replay as an additional source ([#22](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/22))
 - [x] Guardian state shown on the device display (display command over MQTT, `G:NO LINK` after 5 s)
 
 #### 2. Fault campaigns
@@ -377,7 +377,7 @@ flowchart LR
 - [x] Publish fault events over uProtocol (`up://rom-vehicle/1002/1/8003` → DFM, Python ↔ Rust `up-transport-zenoh`)
 - [x] Heartbeats from the uProtocol link, the KUKSA databroker, the adapter / simulator and the physical chip; the guardian names the failing component (DFM code for the root cause)
 - [x] Publish state and mitigation over uProtocol (`up://rom-vehicle/1002/1/8006`, on every change and every second)
-- [ ] The guardian's own outgoing heartbeat over uProtocol
+- [ ] The guardian's own outgoing heartbeat over uProtocol ([#23](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/23))
 - [x] AZ3166 liveness heartbeat without a re-flash: the adapter turns the board's telemetry (1.5 s timeout) and its MQTT Last Will (`offline`) into the `chip` heartbeat; the guardian supervises it (`chip silent` → `SENSOR_FAULT`, DTC `chip_silent`, required in `make hw`), and the board watches the guardian back (`G:NO LINK` after 5 s)
 - [x] Detect duplicate / reordered messages (dropped, `link_integrity`) and implausible rate of change (`cellN.rate_implausible`, the reading is kept)
 - [x] Correlation IDs (`run_id`, uProtocol `msg_id`) on every event: sender (`published`), transport faults (`transport_fault`), guardian, DFM (`fault_msg_id`), OpenSOVD environment data, evidence record
@@ -392,18 +392,21 @@ flowchart LR
 - [x] Evidence Collector correlating campaign → events → diagnostics, all over uProtocol (campaign events `…/1003/1/8005`, guardian state `…/1002/1/8006`)
 - [x] Verdict per run: PASS / FAIL / INCONCLUSIVE, with detection latency and mitigation timing
 - [x] Report covering all campaigns, failed scenarios included (`/ui/`, ZIP bundle with SHA-256 manifest)
+- [x] Dashboard: live monitoring, start / stop campaigns, safety evidence view ([`services/dashboard`](services/dashboard/README.md))
+- [x] Final run under Ankaios, all 22 campaigns: 20 PASS, 1 expected FAIL (`opensovd_partial_visibility`), 1 open (`transport_delay`, [#29](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/29))
 
 #### 6. Orchestration & platform
 - [x] Eclipse Ankaios manages the final orchestrated run (`make final-run`, [`infra/ankaios`](infra/ankaios/README.md))
-- [ ] Run the stack on Eclipse AutoSD
-- [ ] Remote reruns (Eclipse openDUT) with verdict consistency check
+- [ ] Run the stack on Eclipse AutoSD ([#24](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/24))
+- [ ] Remote reruns (Eclipse openDUT) with verdict consistency check ([#25](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/25))
 
 #### 7. Blueprint & community
-- [ ] Reusable package another team can run with one command
+- [x] Reusable package another team can run with one command (`make final-run`: images, Ankaios, all campaigns, verdicts, evidence bundle)
 - [x] CI pipeline on every PR: tests, DFM fixture check, service images, ThreadX firmware
 - [x] CI runs the fault campaigns (`make evidence-ci`: every run must PASS, evidence bundle verified offline)
-- [ ] Upstream contribution: update `up-transport-zenoh-python` to zenoh 1.x and the current up-spec
-- [ ] SDV Blueprint proposal
+- [x] Upstream: SOVD `faults` resource offered to opensovd-core ([opensovd-core#156](https://github.com/eclipse-opensovd/opensovd-core/issues/156#issuecomment-6044980574), follow-up [#28](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/28))
+- [ ] Upstream contribution: update `up-transport-zenoh-python` to zenoh 1.x and the current up-spec ([#26](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/26))
+- [ ] SDV Blueprint proposal ([#27](https://github.com/Eclipse-SDV-Hackathon-Chapter-Four/RoM/issues/27))
 
 ### How we work
 
