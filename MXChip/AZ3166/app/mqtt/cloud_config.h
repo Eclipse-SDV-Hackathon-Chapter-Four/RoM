@@ -52,7 +52,10 @@ typedef enum
 // ----------------------------------------------------------------------------
 #define MQTT_CLIENT_NAME     "ThreadXAZ3166" //Change to unique name if you run multiple boards.
 // IP of the Mosquitto broker on your hackathon LAN. See README for how to set one up.
+// Override it in cloud_config_local.h (e.g. #define MQTT_LOCAL_BROKER_IP (IP_ADDRESS(172, 20, 10, 7))).
+#ifndef MQTT_LOCAL_BROKER_IP
 #define MQTT_LOCAL_BROKER_IP (IP_ADDRESS(192, 168, 88, 239))
+#endif
 // Unique per board: two clients with the same ID kick each other off the broker.
 #define MQTT_CLIENT_ID       MQTT_CLIENT_NAME "-mery"
 // On-demand request topic (not part of the RoM contract): any message triggers an immediate publish.
