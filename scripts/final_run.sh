@@ -32,6 +32,7 @@ for port in 7690 8082 25551; do
   fi
 done
 mkdir -p "$RUN_DIR/logs" "$RUN_DIR/ankaios/agent"
+chmod 700 "$RUN_DIR/ankaios/agent"   # ank-agent refuses a run folder that group/others can access
 
 say "images (podman, log: runs/$RUN_ID/build.log)"
 {
