@@ -30,7 +30,11 @@ Wi-Fi credentials are never committed. For the `mqtt` app, create a git-ignored 
 #define WIFI_PASSWORD "your-password"
 ```
 
-Also set the IP of your broker (`MQTT_LOCAL_BROKER_IP`) in `cloud_config.h` (use your laptop's LAN IP; do not commit environment-specific values). For the `starter` app, fill in `app/starter/cloud_config.h` locally and do not commit it.
+Set the IP of your broker in the same file (use your laptop's LAN IP); it overrides the default in `cloud_config.h`:
+
+```c
+#define MQTT_LOCAL_BROKER_IP (IP_ADDRESS(192, 168, 1, 50))
+``` For the `starter` app, fill in `app/starter/cloud_config.h` locally and do not commit it.
 
 The ThreadX / NetX Duo submodules are pinned to known-working revisions (newer 6.5.x-era revisions fail DHCP with this WICED stack). Do not update them.
 
