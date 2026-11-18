@@ -59,16 +59,16 @@ jobs:
   licenses:
     name: Eclipse Dash license check (all dependencies)
     runs-on: ubuntu-latest
-    # report only until the blueprint is onboarded: unverified dependencies need an Eclipse IP review by a committer
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
-      # fails while any dependency is not yet approved by the Eclipse IP team; build/DEPENDENCIES lists which
+      # report only until the blueprint is onboarded: unverified dependencies need an Eclipse IP review by a
+      # committer. The step shows a warning, the job stays green; build/DEPENDENCIES (artifact) lists what is open.
       - run: make dash
+        continue-on-error: true
       - if: always()
         uses: actions/upload-artifact@v4
         with:
