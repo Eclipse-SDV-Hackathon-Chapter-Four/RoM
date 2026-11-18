@@ -28,8 +28,9 @@ def ids(path: Path) -> set[str]:
             scope, _, base = name.rpartition("/")
             out.add(f"npm/npmjs/{scope or '-'}/{base}/{p['version']}")
         return out
-    return {f"pypi/pypi/-/{re.sub(r'[-_.]+', '-', name.strip().lower())}/{ver.strip()}"
-            for name, sep, ver in (line.partition("==") for line in path.read_text().splitlines()) if sep}
+    # only real `name==version` lines: a docker build that runs first may print its own log into the same file
+    return {f"pypi/pypi/-/{re.sub(r'[-_.]+', '-', m[1].lower())}/{m[2]}"
+            for m in re.finditer(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==(\S+)$", path.read_text(), re.M)}
 
 
 if __name__ == "__main__":

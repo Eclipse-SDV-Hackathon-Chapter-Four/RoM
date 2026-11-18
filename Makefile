@@ -147,6 +147,7 @@ DASH_URL = https://repo.eclipse.org/service/rest/v1/search/assets/download?sort=
 dash:   ## Eclipse Dash license check of every dependency (Python, Rust, npm) -> build/DEPENDENCIES; needs java; fails on anything not yet approved
 	mkdir -p build
 	test -s build/dash.jar || curl -sSfL -o build/dash.jar '$(DASH_URL)'
+	$(DC) build dev
 	$(DC) run --rm --no-deps -T dev pip freeze --exclude-editable > build/pip-freeze.txt
 	@# the DFM lockfile only exists inside its build stage (rom-dfm joins the fault-lib workspace)
 	$(firstword $(DC_BIN)) build -q --target build -t localhost/rom/dfm-build:dev -f services/dfm/Dockerfile .
