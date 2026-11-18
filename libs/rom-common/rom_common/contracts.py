@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic) — shared RoM "rom_common" library, used by all components.
 """Single source of truth in code for contracts/README.md: VSS path, MQTT topics,
 guardian states/reasons, and payload build/parse helpers with validation."""

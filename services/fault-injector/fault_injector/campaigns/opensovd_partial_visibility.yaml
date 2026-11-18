@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Two cell faults, but the DFM never writes one of them: OpenSOVD shows only half of what the guardian detected.
 # The evidence collector must catch the gap, so the expected verdict is FAIL (the evidence chain working).

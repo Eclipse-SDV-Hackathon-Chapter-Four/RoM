@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 /** Guardian states as produced by services/guardian (MITIGATING is internal to the Guardian). */
 export type GuardianState =
   | "CLEAR"

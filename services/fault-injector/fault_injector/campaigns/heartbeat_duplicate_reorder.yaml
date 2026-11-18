@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Heartbeats arrive twice, then out of order, while the data is fine: harmless, so no fault and no state change.
 # Needs the vss-uprotocol-client fault API (FAULT_API_PORT, PUBLISHER_URL).

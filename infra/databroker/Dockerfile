@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # KUKSA Databroker with the RoM VSS overlay (4 battery cells, heartbeats) baked in: no bind mount needed (Ankaios).
 # Build from the repo root:  docker build -f infra/databroker/Dockerfile -t localhost/rom/databroker:dev .

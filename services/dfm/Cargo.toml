@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Built as a member of the fault-lib workspace (see Dockerfile), so it uses the exact
 # fault-lib / iceoryx2 versions of dfm_bin: the IPC types must match byte for byte.

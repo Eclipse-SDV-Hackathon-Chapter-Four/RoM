@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 """Recorder: every message on the RoM topics goes to events.jsonl and the store first, then to the correlator.
 

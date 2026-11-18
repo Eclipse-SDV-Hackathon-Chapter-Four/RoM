@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Saves what the running Evidence Collector has recorded so far as a completed run for the dashboard's Safety Evidence view:
 #   runs/<RUN_ID>/{evidence.json, summary.json, evidence-bundle.zip, bundle/}      (make evidence-snapshot)
 # Everything is fetched from the collector (http://localhost:8082); nothing is generated or edited here. The bundle is

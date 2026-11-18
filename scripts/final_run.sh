@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Final orchestrated run under Eclipse Ankaios (podman), one command, nothing to do by hand:
 #   images -> network + volumes -> ank-server + ank-agent -> stack incl. evidence collector (infra/ankaios/rom.yaml)

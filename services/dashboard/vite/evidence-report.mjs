@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 // Development / hackathon integration: serves the Evidence Collector's generated report.html from a completed final run
 // (runs/<id>/, written by scripts/final_run.sh) over HTTP, so the dashboard can embed it. Plain Node built-ins, no
 // dependencies. The browser only ever sees two stable URLs; it never learns a filesystem path:

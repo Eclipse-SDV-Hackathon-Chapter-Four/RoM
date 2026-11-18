@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # The chip stops beating while its data keeps arriving (simulated chip; with the real board: unplug it).
 # Data that looks fine but comes from a chip that is not alive must not be trusted.

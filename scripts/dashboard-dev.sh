@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Dashboard dev server in Docker on http://localhost:5173 (no Node.js needed on the host): Live Monitoring, Safety Evidence
 # and the "Run Scenario" control.   scripts/dashboard-dev.sh [start|stop|logs]      (make dashboard / dashboard-stop)
 #

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 // node --test vite/   Server side of the scenario control. Never starts Docker: spawn and the health check are fakes.
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";

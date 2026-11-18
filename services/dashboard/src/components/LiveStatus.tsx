@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Pulsing indicator. Mock: "LIVE DEMO" with a simulated stream. Live: "LIVE DATA" from the running stack, and a red dot
  * when the data source cannot be reached (the last real data stays on screen, never simulated values).

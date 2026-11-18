@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # One cell heats up steadily: the guardian must warn, then go CRITICAL (cooling requested) before the pack is lost.
 run_id: thermal-runaway-01

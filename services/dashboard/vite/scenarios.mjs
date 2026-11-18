@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 // Local hackathon demo control: runs ONE bundled fault-injection campaign of the running Docker Compose stack, on request
 // of the dashboard. It is the same command `make campaign C=<id>` runs (see the Makefile of the runtime repo), nothing is
 // simulated here. Plain Node built-ins; only for the Vite dev server / preview, a static build has no such API.

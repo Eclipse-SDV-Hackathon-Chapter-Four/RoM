@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import type { CellStatus, GuardianState } from "../types/dashboard";
 
 /** One colour per Guardian state, shared by every component. Values are CSS variables from dashboard.css. */

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Diagnostic Fault Manager: fault-lib dfm_bin + rom-dfm bridge (guardian uProtocol fault events -> fault-lib Reporter).
 # Self-contained: no bind mounts, configured only via env, logs to stdout.

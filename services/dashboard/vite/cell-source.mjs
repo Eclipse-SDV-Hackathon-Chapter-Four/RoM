@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 // Made with Claude (Claude Code, Anthropic)
 // Cell 1 source switch: either the AZ3166 board (adapter) or the simulator writes cell 1, never both. Two writers on the
 // same KUKSA path make the value jump between them on every tick, all the way through the guardian.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # VSS uProtocol Client: KUKSA Databroker -> uProtocol (env: KUKSA_HOST/PORT, VSS_SOURCE_PATH, UP_*, ZENOH_*).
 # Self-contained: no bind mounts, configured only via env, logs JSON lines to stdout.

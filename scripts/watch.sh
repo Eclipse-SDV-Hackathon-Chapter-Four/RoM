@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # One fault campaign, watched live in one terminal: simulator -> guardian -> DFM -> OpenSOVD, then the verdict.
 #   make watch C=thermal_runaway        (stack from docker compose; started if it is not up)

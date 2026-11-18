@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import type { CSSProperties, ReactNode } from "react";
 import { AdapterIcon, BridgeIcon, BrokerIcon, DisplayIcon, FlowIcon, SensorIcon, ServerIcon, ShieldIcon, SignalIcon } from "./icons";
 

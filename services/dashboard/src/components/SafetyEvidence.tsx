@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import { useCallback, useEffect, useState } from "react";
 import { EVIDENCE_REPORT_BASE, fetchEvidenceMeta, type EvidenceMeta } from "../data/evidenceReport";
 

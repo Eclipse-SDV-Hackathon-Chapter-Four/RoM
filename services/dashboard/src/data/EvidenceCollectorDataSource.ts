@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import type { DashboardData } from "../types/dashboard";
 import type { DashboardDataSource } from "./DashboardDataSource";
 import { LiveModel, type RawEvent } from "./liveModel";

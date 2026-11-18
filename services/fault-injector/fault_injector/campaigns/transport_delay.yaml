@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Messages arrive 2.5 s late (longer than the 2 s TTL / stale limit). Needs the publisher fault API.
 run_id: transport-delay-01

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import type { CellInfo, GuardianEvent } from "../types/dashboard";
 import { ClockIcon } from "./icons";
 import { matchesFilter, type EventFilter } from "./selection";

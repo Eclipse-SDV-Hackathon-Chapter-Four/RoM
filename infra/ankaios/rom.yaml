@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # RoM stack as Eclipse Ankaios workloads (podman, one agent "rom_hpc"): the same services as infra/docker-compose.yml,
 # from the self-contained images localhost/rom/*:dev (no bind mounts). Started by scripts/final_run.sh, which also

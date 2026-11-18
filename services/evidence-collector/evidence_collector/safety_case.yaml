@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Safety case of the Battery Thermal Guardian: hazard -> safety goal -> safety requirement -> campaigns (run_id).
 # The evidence collector refuses to start if a link is broken (safety_case.py), and a campaign that is not listed

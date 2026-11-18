@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import type { DemoControls as DemoControlSupport } from "../data/DashboardDataSource";
 import type { DemoOverrideInfo, DemoScenario, DemoTarget } from "../types/dashboard";

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Evidence Collector: records the RoM uProtocol topics, judges every fault campaign run, serves the evidence.
 # Self-contained: no bind mounts, configured only via env, logs JSON lines to stdout. Records live in /data

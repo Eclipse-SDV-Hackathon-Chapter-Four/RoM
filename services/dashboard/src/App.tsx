@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import { useEffect, useMemo, useState } from "react";
 import Dashboard from "./components/Dashboard";
 import type { ViewId } from "./components/ViewTabs";

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import type { ReactNode } from "react";
 
 const Svg = ({ children, size = 22 }: { children: ReactNode; size?: number }) => (

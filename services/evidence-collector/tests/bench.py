@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 """Test bench shared by test_correlator.py and test_replay.py: recorder + correlator on a fake clock and a fake
 OpenSOVD, and the bus messages of a thermal-runaway run. Load it with load_bench() (pytest runs in importlib mode)."""

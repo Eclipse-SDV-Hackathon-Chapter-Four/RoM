@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Fault Campaign Runner: YAML campaigns over HTTP, see services/fault-injector/README.md.
 # Self-contained: no bind mounts, configured only via env, logs JSON lines to stdout.

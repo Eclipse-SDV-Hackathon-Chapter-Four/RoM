@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 export function createCellSource(options?: { simUrl?: string; adapterUrl?: string; fetchFn?: typeof fetch }): {
   get(): Promise<{ mode: "hw" | "sim" | "both" | "none"; hwAvailable: boolean; simulatorCells: number[]; adapterEnabled: boolean | null }>;
   set(mode: unknown): ReturnType<ReturnType<typeof createCellSource>["get"]>;

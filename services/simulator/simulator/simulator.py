@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 """Streams a sine-wave battery temperature (default 30-69 °C) for 4 cells into the KUKSA databroker.
 

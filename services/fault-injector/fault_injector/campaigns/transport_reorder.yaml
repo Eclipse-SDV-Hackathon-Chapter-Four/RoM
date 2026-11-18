@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Cell messages swap places in pairs: an older value arrives after a newer one and must not be used.
 # Needs the vss-uprotocol-client fault API (FAULT_API_PORT, PUBLISHER_URL).

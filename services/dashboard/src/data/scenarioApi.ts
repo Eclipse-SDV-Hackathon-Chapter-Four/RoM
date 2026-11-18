@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Demo scenario control: the browser side of vite/scenarios.mjs. It only asks the local dev server to start one of the
  * project's real fault campaigns and reports what the server says; it never produces a verdict itself.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Cell 3 freezes while every DFM write is held 3 s: the guardian detects on time, the DTC reaches OpenSOVD late
 # but within the evidence collector's 5 s limit; the record shows the diagnostic latency (~3 s).

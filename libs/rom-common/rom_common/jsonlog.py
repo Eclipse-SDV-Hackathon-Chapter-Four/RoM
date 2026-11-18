@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic) — shared RoM "rom_common" library, used by all components.
 """JSON-lines logger to stdout: {"ts_ms":..., "component":..., "event":..., ...}.
 

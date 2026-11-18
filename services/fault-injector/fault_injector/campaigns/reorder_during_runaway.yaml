@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Cell 1 heats up while cell messages swap places in pairs: an older, cooler value arriving late must never
 # lower the state; the guardian still warns, goes CRITICAL and requests cooling, and names the degraded link.

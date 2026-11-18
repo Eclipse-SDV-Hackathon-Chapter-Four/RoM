@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude Code (Anthropic, model Claude Opus 5.5) for the Eclipse SDV Hackathon
 # Chapter Four (team RoM, "Doctor Whodunit" challenge), for competition purposes.
 """Battery Thermal Guardian - thermal-runaway early-warning state machine over 4 battery cells.

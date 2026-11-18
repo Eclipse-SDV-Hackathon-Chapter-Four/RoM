@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Every uProtocol message is lost for a while although KUKSA still has fresh values.
 # Needs the vss-uprotocol-client fault API (FAULT_API_PORT, PUBLISHER_URL).

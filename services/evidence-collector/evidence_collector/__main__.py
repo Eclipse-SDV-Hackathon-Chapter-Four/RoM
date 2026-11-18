@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 """RoM Evidence Collector: records every RoM uProtocol message, correlates each fault campaign run, checks OpenSOVD,
 and stores a PASS / FAIL / INCONCLUSIVE evidence record per run (hazard -> safety goal -> requirement -> injected

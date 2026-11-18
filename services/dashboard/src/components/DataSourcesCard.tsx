@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import type { SourceInfo } from "../types/dashboard";
 import type { SourceStatus } from "../types/dashboard";
 import { SignalIcon } from "./icons";

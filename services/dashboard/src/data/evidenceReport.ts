@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 /**
  * The generated Evidence Collector report of a completed final run (runs/<id>/), as the browser sees it. Two stable
  * HTTP documents, nothing about where they come from: today the Vite dev server (vite/evidence-report.mjs), later a

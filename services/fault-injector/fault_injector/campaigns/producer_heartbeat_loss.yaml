@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # The simulator's own heartbeat stops (stands in for a dead adapter in hardware mode).
 run_id: producer-heartbeat-loss-01

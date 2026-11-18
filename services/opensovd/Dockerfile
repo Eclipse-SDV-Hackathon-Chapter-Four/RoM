@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # RoM OpenSOVD server: upstream Eclipse OpenSOVD server + SOVD faults read from the DFM (iceoryx2 dfm/query).
 # Build from the repo root:  docker build -f services/opensovd/Dockerfile -t localhost/rom/opensovd:dev .

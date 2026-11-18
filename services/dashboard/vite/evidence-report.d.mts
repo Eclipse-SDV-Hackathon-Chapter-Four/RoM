@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 export const REQUIRED_FILES: string[];
 export function isTimestampName(name: string): boolean;
 export function selectRun(runsDir: string): { status: "no_runs_dir" | "no_valid_run" | "ok"; run?: { id: string; dir: string; kind: "timestamp" | "fallback" } };

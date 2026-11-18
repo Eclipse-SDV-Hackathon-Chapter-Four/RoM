@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 // Made with Claude (Claude Code, Anthropic)
 /** Cell 1 source switch, the browser side of vite/cell-source.mjs. */
 import { useCallback, useEffect, useState } from "react";

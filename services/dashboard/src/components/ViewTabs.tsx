@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 export type ViewId = "live" | "evidence";
 
 const VIEWS: { id: ViewId; label: string; hash: string }[] = [

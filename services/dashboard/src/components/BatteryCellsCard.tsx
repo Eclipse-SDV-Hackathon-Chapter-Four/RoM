@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import type { BatteryInfo } from "../types/dashboard";
 import { ThermometerIcon } from "./icons";
 import type { CellSelection } from "./selection";

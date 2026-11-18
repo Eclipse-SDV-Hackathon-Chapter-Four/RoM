@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # All four cell sensors freeze (a stuck sensor bus): a flat line must not be trusted as "all fine".
 # Every cell has its own stuck DTC; sensor_stuck_cell3 freezes a single cell.

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 export const SCENARIOS: Readonly<Record<string, string>>;
 export const CONTAINER_PREFIX: string;
 export const CAMPAIGN_LABEL: string;

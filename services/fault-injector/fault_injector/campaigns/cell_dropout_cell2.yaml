@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # KUKSA stops receiving one cell (wire break on cell 2) while the other three still arrive.
 run_id: cell-dropout-cell2-01

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Cell 2 drops 15 °C for two samples and comes back: a sensor glitch, not a physical change.
 run_id: sensor-spike-cell2-01

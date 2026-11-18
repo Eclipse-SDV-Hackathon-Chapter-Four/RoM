@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import evidenceReport from "./vite/evidence-report.mjs";

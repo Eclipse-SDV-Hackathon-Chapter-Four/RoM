@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Multi-fault: cell 3's sensor is stuck while cell 1 overheats. The stuck cell gets its own code and is left out;
 # the pack warning keeps running on the healthy cells and still reaches CRITICAL.

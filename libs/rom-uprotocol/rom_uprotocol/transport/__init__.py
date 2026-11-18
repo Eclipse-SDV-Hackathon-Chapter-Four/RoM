@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic) — RoM "rom_uprotocol" library.
 """Transport selection: make_transport(entity_uri) picks the UTransport named by UP_TRANSPORT.
 

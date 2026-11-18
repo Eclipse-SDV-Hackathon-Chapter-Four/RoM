@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Dev/test image: a virtualenv (/opt/venv, always active via PATH) with every RoM package installed
 # editable, so the repo bind-mounted at /app is live code. Used for tests, the kuksa-client shell,

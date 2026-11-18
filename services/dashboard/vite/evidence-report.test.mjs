@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 // node --test vite/   Everything runs on temporary directories created and removed here, never on the repo's runs/.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

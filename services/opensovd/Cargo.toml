@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # RoM OpenSOVD server: the upstream Eclipse OpenSOVD server (opensovd-core) plus the SOVD `faults`
 # resource backed by the fault-lib DFM query API (dfm/query over iceoryx2). See README.md.

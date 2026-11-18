@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 """Where VSS values come from. The client publishes whatever a SignalSource yields, so a new
 source (CAN replay, another databroker, a recorded log) is a new class here, not a client change."""

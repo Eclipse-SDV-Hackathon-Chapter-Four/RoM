@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+// SPDX-License-Identifier: Apache-2.0
 import type { BatteryInfo, GuardianInfo } from "../types/dashboard";
 import { ShieldIcon } from "./icons";
 import { CELL_STATUS_LABEL, STATE_CLASS, STATE_LABEL } from "./stateStyle";

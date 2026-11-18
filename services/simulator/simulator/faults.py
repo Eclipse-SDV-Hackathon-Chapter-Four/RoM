@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 """Fault engine of the simulator: signal faults change what a cell reports, source faults change whether the
 source reports at all. Pure logic, no I/O; the clock is injected so tests do not sleep.

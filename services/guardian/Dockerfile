@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 # Battery Thermal Guardian, input over uProtocol only (env: WARN_C, CRIT_C, UP_*, ZENOH_*, MQTT_*).
 # Self-contained: no bind mounts, configured only via env, logs JSON lines to stdout.

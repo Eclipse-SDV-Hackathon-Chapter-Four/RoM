@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
 # Made with Claude (Claude Code, Anthropic)
 """Campaign events over uProtocol (up://<UP_AUTHORITY>/1003/1/8005): the evidence collector's START / END markers.
 
