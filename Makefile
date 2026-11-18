@@ -12,7 +12,7 @@ PY = $(VENV)/bin/python
 MQTT_HOST_PORT ?= 1883
 export MQTT_HOST_PORT
 
-.PHONY: evidence-ci help mqtt-restart up down logs kuksa sim sim-up guardian campaign campaigns campaigns-all evidence evidence-bundle adapter hw sovd sovd-faults dfm-faults dfm-fixtures final-run watch dashboard dashboard-stop evidence-snapshot images venv sim-local test-local shell test
+.PHONY: evidence-ci help mqtt-restart up down logs kuksa sim sim-up guardian campaign campaigns campaigns-all evidence evidence-bundle adapter hw sovd sovd-faults dfm-faults dfm-fixtures final-run watch dashboard dashboard-stop evidence-snapshot images venv sim-local test-local shell test dash
 
 help:   ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -142,6 +142,17 @@ test-local: venv ## run pytest in the local .venv
 
 shell:  ## bash in the python venv image
 	$(DC) run --rm dev bash
+
+DASH_URL = https://repo.eclipse.org/service/rest/v1/search/assets/download?sort=version&repository=dash-maven2-releases&maven.groupId=org.eclipse.dash&maven.artifactId=org.eclipse.dash.licenses&maven.extension=jar
+dash:   ## Eclipse Dash license check of every dependency (Python, Rust, npm) -> build/DEPENDENCIES; needs java; fails on anything not yet approved
+	mkdir -p build
+	test -s build/dash.jar || curl -sSfL -o build/dash.jar '$(DASH_URL)'
+	$(DC) run --rm --no-deps -T dev pip freeze --exclude-editable > build/pip-freeze.txt
+	@# the DFM lockfile only exists inside its build stage (rom-dfm joins the fault-lib workspace)
+	$(firstword $(DC_BIN)) build -q --target build -t localhost/rom/dfm-build:dev -f services/dfm/Dockerfile .
+	$(firstword $(DC_BIN)) run --rm localhost/rom/dfm-build:dev cat /fault-lib/Cargo.lock > build/dfm-Cargo.lock
+	python3 scripts/dash_ids.py build/pip-freeze.txt services/opensovd/Cargo.lock build/dfm-Cargo.lock services/dashboard/package-lock.json > build/dash-ids.txt
+	java -jar build/dash.jar -summary build/DEPENDENCIES build/dash-ids.txt
 
 test:   ## run pytest
 	$(DC) run --rm dev pytest -q

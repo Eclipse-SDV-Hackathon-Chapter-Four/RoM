@@ -38,6 +38,10 @@ Set the IP of your broker in the same file (use your laptop's LAN IP); it overri
 
 The ThreadX / NetX Duo submodules are pinned to known-working revisions (newer 6.5.x-era revisions fail DHCP with this WICED stack). Do not update them.
 
+The WICED SDK (prebuilt Wi-Fi driver) is not in this repository: the first CMake configure downloads it from
+[eclipse-threadx/getting-started](https://github.com/eclipse-threadx/getting-started) at a pinned commit and checks each
+file against its SHA-256 (`MXChip/AZ3166/lib/CMakeLists.txt`). The first build therefore needs internet access.
+
 Flashing is drag-and-drop: the board mounts as a USB mass storage drive. Copy the built binary onto it:
 
 ```bash

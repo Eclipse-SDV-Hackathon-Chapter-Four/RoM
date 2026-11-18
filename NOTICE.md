@@ -30,8 +30,10 @@ The project maintains the following source code repositories:
 Dependencies are declared in `requirements.txt`, the `pyproject.toml` files, `services/dashboard/package-lock.json` and
 the `Cargo.toml` / `Cargo.lock` files; each is used under its own license.
 
-Vendored or bundled content under `MXChip/AZ3166/` (STM32Cube HAL / CMSIS, WICED SDK, Eclipse ThreadX and NetX Duo
-submodules) remains under the licenses stated in those files and directories.
+Vendored or bundled content under `MXChip/AZ3166/` (STM32Cube HAL / CMSIS, Eclipse ThreadX and NetX Duo
+submodules) remains under the licenses stated in those files and directories. The WICED SDK (prebuilt Wi-Fi driver) is not
+in this repository: the firmware build downloads it from https://github.com/eclipse-threadx/getting-started at a pinned
+commit (`MXChip/AZ3166/lib/CMakeLists.txt`).
 
 ## Cryptography
 

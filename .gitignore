@@ -15,3 +15,8 @@ target/
 evidence-ci.zip
 .evidence-ci-start
 runs/
+
+# WICED SDK: downloaded at build time (MXChip/AZ3166/lib/CMakeLists.txt)
+MXChip/AZ3166/lib/wiced_sdk/
+# Presentations live outside the repository
+*.pptx

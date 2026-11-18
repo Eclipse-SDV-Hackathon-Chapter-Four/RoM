@@ -56,6 +56,28 @@ jobs:
             stack-logs.txt
           if-no-files-found: ignore
 
+  licenses:
+    name: Eclipse Dash license check (all dependencies)
+    runs-on: ubuntu-latest
+    # report only until the blueprint is onboarded: unverified dependencies need an Eclipse IP review by a committer
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      # fails while any dependency is not yet approved by the Eclipse IP team; build/DEPENDENCIES lists which
+      - run: make dash
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dash-licenses
+          path: |
+            build/DEPENDENCIES
+            build/dash-ids.txt
+          if-no-files-found: ignore
+
   firmware:
     name: AZ3166 firmware (Eclipse ThreadX)
     runs-on: ubuntu-latest
